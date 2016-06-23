@@ -1140,8 +1140,8 @@ class h264_symbol {
 
 class compressor {
  public:
-  compressor(const std::string& input_filename, std::ostream& out_stream)
-    : input_filename(input_filename), out_stream(out_stream) {
+  compressor(const std::string &input_filename, std::ostream &out_stream)
+      : input_filename(input_filename), out_stream(out_stream) {
     if (av_file_map(input_filename.c_str(), &original_bytes, &original_size, 0, NULL) < 0) {
       throw std::invalid_argument("Failed to open file: " + input_filename);
     }
@@ -1194,13 +1194,15 @@ class compressor {
       model = &c->model;
       model->reset();
     }
+
     ~cabac_decoder() { assert(out == nullptr || out->has_cabac()); }
 
-    void execute_symbol(int symbol, const void* state) {
+    void execute_symbol(int symbol, const void *state) {
       h264_symbol sym(symbol, state);
 #define QUEUE_MODE
 #ifdef QUEUE_MODE
-      if (queueing_symbols == PIP_SIGNIFICANCE_MAP || queueing_symbols == PIP_SIGNIFICANCE_EOB || !symbol_buffer.empty()) {
+      if (queueing_symbols == PIP_SIGNIFICANCE_MAP || queueing_symbols == PIP_SIGNIFICANCE_EOB ||
+          !symbol_buffer.empty()) {
         symbol_buffer.push_back(sym);
         model->update_state_tracking(symbol);
       } else {
@@ -1233,34 +1235,38 @@ class compressor {
     void begin_coding_type(
         CodingType ct, int zigzag_index, int param0, int param1) {
       if (!model) {
-          return;
+        return;
       }
       bool begin_queue = model->begin_coding_type(ct, zigzag_index, param0, param1);
       if (begin_queue && (ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB)) {
         push_queueing_symbols(ct);
       }
     }
+
     void end_coding_type(CodingType ct) {
       if (!model) {
-          return;
+        return;
       }
       model->end_coding_type(ct);
 
       if ((ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB)) {
         stop_queueing_symbols();
         model->finished_queueing(ct,
-               [&](model_key key, int*symbol) {
-               size_t billable_bytes = encoder.put(*symbol, [&](range_t range){
-                   return model->probability_for_model_key(range, key);
-               });
-               model->update_state_for_model_key(*symbol, key);
-               if (billable_bytes) {
-                   model->billable_bytes(billable_bytes);
-               }
-            });
+                                 [&](model_key key, int *symbol) {
+                                   size_t billable_bytes = encoder.put(*symbol, [&](range_t range) {
+                                     return model->probability_for_model_key(range, key);
+                                   });
+                                   model->update_state_for_model_key(*symbol, key);
+                                   if (billable_bytes) {
+                                     model->billable_bytes(billable_bytes);
+                                   }
+                                 });
         static int i = 0;
         if (i++ < 10) {
-        std::cerr << "FINISHED QUEUING DECODE: " << (int)(model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x, model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index]) << std::endl;
+          std::cerr << "FINISHED QUEUING DECODE: " <<
+          (int) (model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
+                                                         model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index]) <<
+          std::endl;
         }
         pop_queueing_symbols(ct);
         model->coding_type = PIP_UNKNOWN;
@@ -1270,18 +1276,18 @@ class compressor {
    private:
     void push_queueing_symbols(CodingType ct) {
       // Does not currently support nested queues.
-      assert (queueing_symbols == PIP_UNKNOWN);
-      assert (symbol_buffer.empty());
+      assert(queueing_symbols == PIP_UNKNOWN);
+      assert(symbol_buffer.empty());
       queueing_symbols = ct;
     }
 
     void stop_queueing_symbols() {
-      assert (queueing_symbols != PIP_UNKNOWN);
+      assert(queueing_symbols != PIP_UNKNOWN);
       queueing_symbols = PIP_UNKNOWN;
     }
 
     void pop_queueing_symbols(CodingType ct) {
-        //std::cerr<< "FINISHED QUEUEING "<< symbol_buffer.size()<<std::endl;
+      //std::cerr<< "FINISHED QUEUEING "<< symbol_buffer.size()<<std::endl;
       if (ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB) {
         if (model) {
           model->reset_mb_significance_state_tracking();
@@ -1298,23 +1304,27 @@ class compressor {
 
     compressor *c;
     h264_model *model;
-    std::vector<uint8_t> encoder_out;
-    recoded_code::encoder<std::back_insert_iterator<std::vector<uint8_t>>, uint8_t> encoder{
-      std::back_inserter(encoder_out)};
+    std::vector <uint8_t> encoder_out;
+    recoded_code::encoder <std::back_insert_iterator<std::vector < uint8_t>>, uint8_t>
+
+    encoder {
+      std::back_inserter(encoder_out)
+    };
 
     CodingType queueing_symbols = PIP_UNKNOWN;
-    std::vector<h264_symbol> symbol_buffer;
+    std::vector <h264_symbol> symbol_buffer;
   };
+
   h264_model *get_model() {
     return &model;
   }
 
  private:
 
-  Recoded::Block* find_next_coded_block_and_emit_literal(const uint8_t *buf, int size) {
-    uint8_t *found = static_cast<uint8_t*>( memmem(
+  Recoded::Block *find_next_coded_block_and_emit_literal(const uint8_t *buf, int size) {
+    uint8_t *found = static_cast<uint8_t *>( memmem(
         &original_bytes[prev_coded_block_end], read_offset - prev_coded_block_end,
-        buf, size) );
+        buf, size));
     if (found && size >= SURROGATE_MARKER_BYTES) {
       size_t gap = found - &original_bytes[prev_coded_block_end];
       out.add_block()->set_literal(&original_bytes[prev_coded_block_end], gap);
@@ -1328,7 +1338,7 @@ class compressor {
     } else {
       // Can't recode this block, probably because it was NAL-escaped. Place
       // a skip marker in the block list.
-      Recoded::Block* block = out.add_block();
+      Recoded::Block *block = out.add_block();
       block->set_skip_coded(true);
       block->set_size(size);
       return nullptr;  // Tell the recoder to ignore this block.
@@ -1336,7 +1346,7 @@ class compressor {
   }
 
   std::string input_filename;
-  std::ostream& out_stream;
+  std::ostream &out_stream;
 
   uint8_t *original_bytes = nullptr;
   size_t original_size = 0;
@@ -1360,8 +1370,8 @@ class decompressor {
   };
 
  public:
-  decompressor(const std::string& input_filename, std::ostream& out_stream)
-    : input_filename(input_filename), out_stream(out_stream) {
+  decompressor(const std::string &input_filename, std::ostream &out_stream)
+      : input_filename(input_filename), out_stream(out_stream) {
     uint8_t *bytes;
     size_t size;
     if (av_file_map(input_filename.c_str(), &bytes, &size, 0, NULL) < 0) {
@@ -1369,8 +1379,9 @@ class decompressor {
     }
     in.ParseFromArray(bytes, size);
   }
-  decompressor(const std::string& input_filename, const std::string& in_bytes, std::ostream& out_stream)
-    : input_filename(input_filename), out_stream(out_stream) {
+
+  decompressor(const std::string &input_filename, const std::string &in_bytes, std::ostream &out_stream)
+      : input_filename(input_filename), out_stream(out_stream) {
     in.ParseFromString(in_bytes);
   }
 
@@ -1381,11 +1392,11 @@ class decompressor {
     av_decoder<decompressor> d(this, input_filename);
     d.decode_video();
 
-    for (auto& block : blocks) {
+    for (auto &block : blocks) {
       if (!block.done) throw std::runtime_error("Not all blocks were decoded.");
       if (block.length_parity != -1) {
         // Correct for x264 padding: replace last byte or add an extra byte.
-        if (block.length_parity != (int)(block.out_bytes.size() & 1)) {
+        if (block.length_parity != (int) (block.out_bytes.size() & 1)) {
           block.out_bytes.insert(block.out_bytes.end(), block.last_byte);
         } else {
           block.out_bytes[block.out_bytes.size() - 1] = block.last_byte;
@@ -1399,7 +1410,7 @@ class decompressor {
     uint8_t *p = buffer_out;
     while (size > 0 && read_index < in.block_size()) {
       if (read_block.empty()) {
-        const Recoded::Block& block = in.block(read_index);
+        const Recoded::Block &block = in.block(read_index);
         if (int(block.has_literal()) + int(block.has_cabac()) + int(block.has_skip_coded()) != 1) {
           throw std::runtime_error("Invalid input block: must have exactly one type");
         }
@@ -1432,13 +1443,13 @@ class decompressor {
           throw std::runtime_error("Unknown input block type");
         }
       }
-      if ((size_t)read_offset < read_block.size()) {
-        int n = read_block.copy(reinterpret_cast<char*>(p), size, read_offset);
+      if ((size_t) read_offset < read_block.size()) {
+        int n = read_block.copy(reinterpret_cast<char *>(p), size, read_offset);
         read_offset += n;
         p += n;
         size -= n;
       }
-      if ((size_t)read_offset >= read_block.size()) {
+      if ((size_t) read_offset >= read_block.size()) {
         read_block.clear();
         read_offset = 0;
         read_index++;
@@ -1458,7 +1469,7 @@ class decompressor {
       if (block->has_cabac()) {
         model = &d->model;
         model->reset();
-        decoder.reset(new recoded_code::decoder<const char*, uint8_t>(
+        decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
       } else if (block->has_skip_coded() && block->skip_coded()) {
         // We're skipping this block, so disable calls to our hooks.
@@ -1469,42 +1480,46 @@ class decompressor {
         throw std::runtime_error("Expected CABAC block.");
       }
     }
+
     ~cabac_decoder() { assert(out->done); }
 
     int get(uint8_t *state) {
-     int symbol;
+      int symbol;
       if (model->coding_type == PIP_SIGNIFICANCE_EOB) {
-          symbol = std::get<1>(model->get_model_key(state));
+        symbol = std::get<1>(model->get_model_key(state));
       } else {
-        symbol = decoder->get([&](range_t range){
-           return model->probability_for_state(range, state); });
+        symbol = decoder->get([&](range_t range) {
+          return model->probability_for_state(range, state);
+        });
       }
       size_t billable_bytes = cabac_encoder.put(symbol, state);
       if (billable_bytes) {
-          model->billable_cabac_bytes(billable_bytes);
+        model->billable_cabac_bytes(billable_bytes);
       }
       model->update_state(symbol, state);
       return symbol;
     }
 
     int get_bypass() {
-      int symbol = decoder->get([&](range_t range){
-          return model->probability_for_state(range, &model->bypass_context); });
+      int symbol = decoder->get([&](range_t range) {
+        return model->probability_for_state(range, &model->bypass_context);
+      });
       model->update_state(symbol, &model->bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
       if (billable_bytes) {
-          model->billable_cabac_bytes(billable_bytes);
+        model->billable_cabac_bytes(billable_bytes);
       }
       return symbol;
     }
 
     int get_terminate() {
-      int symbol = decoder->get([&](range_t range){
-          return model->probability_for_state(range, &model->terminate_context); });
+      int symbol = decoder->get([&](range_t range) {
+        return model->probability_for_state(range, &model->terminate_context);
+      });
       model->update_state(symbol, &model->terminate_context);
       size_t billable_bytes = cabac_encoder.put_terminate(symbol);
       if (billable_bytes) {
-          model->billable_cabac_bytes(billable_bytes);
+        model->billable_cabac_bytes(billable_bytes);
       }
       if (symbol) {
         finish();
@@ -1517,22 +1532,26 @@ class decompressor {
       bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
       if (begin_queue && ct) {
         model->finished_queueing(ct,
-              [&](model_key key, int * symbol) {
-               *symbol = decoder->get([&](range_t range){
-                   return model->probability_for_model_key(range, key);
-               });
-               model->update_state_for_model_key(*symbol, key);
-            });
+                                 [&](model_key key, int *symbol) {
+                                   *symbol = decoder->get([&](range_t range) {
+                                     return model->probability_for_model_key(range, key);
+                                   });
+                                   model->update_state_for_model_key(*symbol, key);
+                                 });
         static int i = 0;
         if (i++ < 10) {
-          std::cerr << "FINISHED QUEUING RECODE: " << (int)model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x, model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index] << std::endl;
+          std::cerr << "FINISHED QUEUING RECODE: " <<
+          (int) model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
+                                                        model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index] <<
+          std::endl;
         }
       }
     }
+
     void end_coding_type(CodingType ct) {
-        if (!model) {
-            return;
-        }
+      if (!model) {
+        return;
+      }
       model->end_coding_type(ct);
     }
 
@@ -1542,7 +1561,7 @@ class decompressor {
       if (cabac_out.back() == 0x80) {
         cabac_out.pop_back();
       }
-      out->out_bytes.assign(reinterpret_cast<const char*>(cabac_out.data()), cabac_out.size());
+      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
       out->done = true;
     }
 
@@ -1551,12 +1570,16 @@ class decompressor {
     block_state *out = nullptr;
 
     h264_model *model;
-    std::unique_ptr<recoded_code::decoder<const char*, uint8_t>> decoder;
+    std::unique_ptr <recoded_code::decoder<const char *, uint8_t>> decoder;
 
-    std::vector<uint8_t> cabac_out;
-    cabac::encoder<std::back_insert_iterator<std::vector<uint8_t>>> cabac_encoder{
-      std::back_inserter(cabac_out)};
+    std::vector <uint8_t> cabac_out;
+    cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>>
+
+    cabac_encoder {
+      std::back_inserter(cabac_out)
+    };
   };
+
   h264_model *get_model() {
     return &model;
   }
@@ -1566,14 +1589,14 @@ class decompressor {
   std::string next_surrogate_marker() {
     uint64_t n = surrogate_marker_sequence_number++;
     std::string surrogate_marker(SURROGATE_MARKER_BYTES, '\x01');
-    for (int i = 0; i < (int)surrogate_marker.size(); i++) {
+    for (int i = 0; i < (int) surrogate_marker.size(); i++) {
       surrogate_marker[i] = (n % 255) + 1;
       n /= 255;
     }
     return surrogate_marker;
   }
-  
-  std::string make_surrogate_block(const std::string& surrogate_marker, size_t size) {
+
+  std::string make_surrogate_block(const std::string &surrogate_marker, size_t size) {
     if (size < surrogate_marker.size()) {
       throw std::runtime_error("Invalid coded block size for surrogate: " + std::to_string(size));
     }
@@ -1582,7 +1605,7 @@ class decompressor {
     return surrogate_block;
   }
 
-  int recognize_coded_block(const uint8_t* buf, int size) {
+  int recognize_coded_block(const uint8_t *buf, int size) {
     while (!blocks[next_coded_block].coded) {
       if (next_coded_block >= read_index) {
         throw std::runtime_error("Coded block expected, but not recorded in the compressed data.");
@@ -1591,13 +1614,13 @@ class decompressor {
     }
     int index = next_coded_block++;
     // Validate the decoder init call against the coded block's size and surrogate marker.
-    const Recoded::Block& block = in.block(index);
+    const Recoded::Block &block = in.block(index);
     if (block.has_cabac()) {
       if (block.size() != size) {
         throw std::runtime_error("Invalid surrogate block size.");
       }
-      std::string buf_header(reinterpret_cast<const char*>(buf),
-          blocks[index].surrogate_marker.size());
+      std::string buf_header(reinterpret_cast<const char *>(buf),
+                             blocks[index].surrogate_marker.size());
       if (blocks[index].surrogate_marker != buf_header) {
         throw std::runtime_error("Invalid surrogate marker in coded block.");
       }
@@ -1612,13 +1635,13 @@ class decompressor {
   }
 
   std::string input_filename;
-  std::ostream& out_stream;
+  std::ostream &out_stream;
 
   Recoded in;
   int read_index = 0, read_offset = 0;
   std::string read_block;
 
-  std::vector<block_state> blocks;
+  std::vector <block_state> blocks;
 
   // Counter used to generate surrogate markers for coded blocks.
   uint64_t surrogate_marker_sequence_number = 1;
