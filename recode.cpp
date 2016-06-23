@@ -25,7 +25,7 @@ extern "C" {
 
 // CABAC blocks smaller than this will be skipped.
 const int SURROGATE_MARKER_BYTES = 8;
-//#define DO_NEIGHBOR_LOGGING
+#define DO_NEIGHBOR_LOGGING
 #ifdef DO_NEIGHBOR_LOGGING
 #define LOG_NEIGHBORS printf
 #else
@@ -866,7 +866,6 @@ class h264_model {
 
   template<class Functor>
   void finished_queueing(CodingType ct, const Functor &put_or_get) {
-
     if (ct == PIP_SIGNIFICANCE_MAP) {
       bool block_of_interest = (sub_mb_cat == 1 || sub_mb_cat == 2);
       CodingType last = coding_type;
@@ -904,44 +903,31 @@ class h264_model {
           if (above_nonzero) {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
-          put_or_get(model_key(&(STATE_FOR_NUM_NONZERO_BIT[i]), serialized_so_far + 64 * (frames[!cur_frame].meta_at(
-              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit) + 128 * left_nonzero_bit +
-                                                                384 * above_nonzero_bit,
-                               meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 + sub_mb_cat * 4), &nonzero_bits[i]);
+          put_or_get(
+              model_key(&(STATE_FOR_NUM_NONZERO_BIT[i]),
+                        serialized_so_far + 64 * (frames[!cur_frame].meta_at(
+                            mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit) +
+                        128 * left_nonzero_bit +
+                        384 * above_nonzero_bit,
+                        meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 + sub_mb_cat * 4), &nonzero_bits[i]);
           if (nonzero_bits[i]) {
             serialized_so_far |= cur_bit;
           }
         } while (++i < serialized_bits);
+
         if (block_of_interest) {
           LOG_NEIGHBORS("<{");
-        }
-        if (has_left) {
-          if (block_of_interest) {
-            LOG_NEIGHBORS("%d,", left_nonzero);
-          }
-        } else {
-          if (block_of_interest) {
-            LOG_NEIGHBORS("X,");
-          }
-        }
-        if (has_above) {
-          if (block_of_interest) {
-            LOG_NEIGHBORS("%d,", above_nonzero);
-          }
-        } else {
-          if (block_of_interest) {
-            LOG_NEIGHBORS("X,");
-          }
-        }
-        if (frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded) {
-          if (block_of_interest) {
+
+          if (has_left) LOG_NEIGHBORS("%d,", left_nonzero);
+          else LOG_NEIGHBORS("X,");
+
+          if (has_above) LOG_NEIGHBORS("%d,", above_nonzero);
+          else LOG_NEIGHBORS("X,");
+
+          if (frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded)
             LOG_NEIGHBORS("%d",
                           frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index]);
-          }
-        } else {
-          if (block_of_interest) {
-            LOG_NEIGHBORS("X");
-          }
+          else LOG_NEIGHBORS("X");
         }
       }
 #endif
