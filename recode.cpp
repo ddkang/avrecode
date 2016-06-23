@@ -382,10 +382,10 @@ constexpr uint8_t unzigzag64[64] = {
 };
 
 constexpr uint8_t zigzag64[64] = {
-    0, 1, 5, 6, 14, 15, 27, 28,
-    2, 4, 7, 13, 16, 26, 29, 42,
-    3, 8, 12, 17, 25, 30, 41, 43,
-    9, 11, 18, 24, 31, 40, 44, 53,
+    0,  1,  5,  6,  14, 15, 27, 28,
+    2,  4,  7,  13, 16, 26, 29, 42,
+    3,  8,  12, 17, 25, 30, 41, 43,
+    9,  11, 18, 24, 31, 40, 44, 53,
     10, 19, 23, 32, 39, 45, 52, 54,
     20, 22, 33, 38, 46, 51, 55, 60,
     21, 34, 37, 47, 50, 56, 59, 61,
@@ -394,227 +394,232 @@ constexpr uint8_t zigzag64[64] = {
 
 
 int test_reverse_scan8() {
-    for (size_t i = 0; i < sizeof(scan_8)/ sizeof(scan_8[0]); ++i) {
-        auto a = reverse_scan_8[scan_8[i] >> 3][scan_8[i] & 7];
-        assert(a.neighbor_left == false && a.neighbor_up == false);
-        assert(a.scan8_index == i);
-        if (a.scan8_index != i) {
-            return 1;
-        }
+  for (size_t i = 0; i < sizeof(scan_8) / sizeof(scan_8[0]); ++i) {
+    auto a = reverse_scan_8[scan_8[i] >> 3][scan_8[i] & 7];
+    assert(a.neighbor_left == false && a.neighbor_up == false);
+    assert(a.scan8_index == i);
+    if (a.scan8_index != i) {
+      return 1;
     }
-    for (int i = 0;i < 16; ++i) {
-        assert(zigzag16[unzigzag16[i]] == i);
-        assert(unzigzag16[zigzag16[i]] == i);
-    }
-    return 0;
+  }
+  for (int i = 0; i < 16; ++i) {
+    assert(zigzag16[unzigzag16[i]] == i);
+    assert(unzigzag16[zigzag16[i]] == i);
+  }
+  return 0;
 }
+
 int make_sure_reverse_scan8 = test_reverse_scan8();
 struct CoefficientCoord {
-    int mb_x;
-    int mb_y;
-    int scan8_index;
-    int zigzag_index;
+  int mb_x;
+  int mb_y;
+  int scan8_index;
+  int zigzag_index;
 };
 
 bool get_neighbor_sub_mb(bool above, int sub_mb_size,
-                  CoefficientCoord input,
-                  CoefficientCoord *output) {
-    int mb_x = input.mb_x;
-    int mb_y = input.mb_y;
-    int scan8_index = input.scan8_index;
-    output->scan8_index = scan8_index;
-    output->mb_x = mb_x;
-    output->mb_y = mb_y;
-    output->zigzag_index = input.zigzag_index;
-    if (scan8_index >= 16 * 3) {
-        if (above) {
-            if (mb_y > 0) {
-                output->mb_y -= 1;
-                return true;
-            }
-            return false;
-        } else {
-            if (mb_x > 0) {
-                output->mb_x -= 1;
-                return true;
-            }
-            return false;
-        }
+                         CoefficientCoord input,
+                         CoefficientCoord *output) {
+  int mb_x = input.mb_x;
+  int mb_y = input.mb_y;
+  int scan8_index = input.scan8_index;
+  output->scan8_index = scan8_index;
+  output->mb_x = mb_x;
+  output->mb_y = mb_y;
+  output->zigzag_index = input.zigzag_index;
+  if (scan8_index >= 16 * 3) {
+    if (above) {
+      if (mb_y > 0) {
+        output->mb_y -= 1;
+        return true;
+      }
+      return false;
+    } else {
+      if (mb_x > 0) {
+        output->mb_x -= 1;
+        return true;
+      }
+      return false;
     }
-    int scan8 = scan_8[scan8_index];
-    int left_shift = (above ? 0 : -1);
-    int above_shift = (above ? -1 : 0);
-    auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
-    if (neighbor.neighbor_left) {
-        if (mb_x == 0){
-            return false;
-        } else {
-            --mb_x;
-        }
+  }
+  int scan8 = scan_8[scan8_index];
+  int left_shift = (above ? 0 : -1);
+  int above_shift = (above ? -1 : 0);
+  auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
+  if (neighbor.neighbor_left) {
+    if (mb_x == 0) {
+      return false;
+    } else {
+      --mb_x;
     }
-    if (neighbor.neighbor_up) {
-        if (mb_y == 0) {
-            return false;
-        } else {
-            --mb_y;
-        }
+  }
+  if (neighbor.neighbor_up) {
+    if (mb_y == 0) {
+      return false;
+    } else {
+      --mb_y;
     }
-    output->scan8_index = neighbor.scan8_index;
-    if (sub_mb_size >= 32) {
-        output->scan8_index /= 4;
-        output->scan8_index *= 4; // round down to the nearest multiple of 4
-    }
-    output->zigzag_index = input.zigzag_index;
-    output->mb_x = mb_x;
-    output->mb_y = mb_y;
-    return true;
+  }
+  output->scan8_index = neighbor.scan8_index;
+  if (sub_mb_size >= 32) {
+    output->scan8_index /= 4;
+    output->scan8_index *= 4; // round down to the nearest multiple of 4
+  }
+  output->zigzag_index = input.zigzag_index;
+  output->mb_x = mb_x;
+  output->mb_y = mb_y;
+  return true;
 }
+
 int log2(int y) {
-    int x = -1;
-    while (y) {
-        y/=2;
-        x++;
-    }
-    return x;
+  int x = -1;
+  while (y) {
+    y /= 2;
+    x++;
+  }
+  return x;
 }
+
 bool get_neighbor(bool above, int sub_mb_size,
                   CoefficientCoord input,
                   CoefficientCoord *output) {
-    int mb_x = input.mb_x;
-    int mb_y = input.mb_y;
-    int scan8_index = input.scan8_index;
-    int zigzag_index = input.zigzag_index;
-    int dimension = 2;
-    if (sub_mb_size > 15) {
-        dimension = 4;
+  int mb_x = input.mb_x;
+  int mb_y = input.mb_y;
+  int scan8_index = input.scan8_index;
+  int zigzag_index = input.zigzag_index;
+  int dimension = 2;
+  if (sub_mb_size > 15) {
+    dimension = 4;
+  }
+  if (sub_mb_size > 32) {
+    dimension = 8;
+  }
+  if (scan8_index >= 16 * 3) {
+    // we are DC...
+    int linear_index = unzigzag4[zigzag_index];
+    if (sub_mb_size == 16) {
+      linear_index = unzigzag16[zigzag_index];
+    } else {
+      assert(sub_mb_size <= 4);
     }
-    if (sub_mb_size > 32) {
-        dimension = 8;
+    if ((above && linear_index >= dimension) // if is inner
+        || ((linear_index & (dimension - 1)) && !above)) {
+      if (above) {
+        linear_index -= dimension;
+      } else {
+        --linear_index;
+      }
+      if (sub_mb_size == 16) {
+        output->zigzag_index = zigzag16[linear_index];
+      } else {
+        output->zigzag_index = zigzag4[linear_index];
+      }
+      output->mb_x = mb_x;
+      output->mb_y = mb_y;
+      output->scan8_index = scan8_index;
+      return true;
     }
-    if (scan8_index >= 16 * 3) {
-        // we are DC...
-        int linear_index = unzigzag4[zigzag_index];
-        if (sub_mb_size == 16) {
-            linear_index = unzigzag16[zigzag_index];
-        } else {
-            assert(sub_mb_size <= 4);
-        }
-        if ((above && linear_index >= dimension) // if is inner
-            || ((linear_index & (dimension - 1)) && !above)) {
-            if (above) {
-                linear_index -= dimension;
-            } else {
-                -- linear_index;
-            }
-            if (sub_mb_size == 16) {
-                output->zigzag_index = zigzag16[linear_index];
-            } else {
-                output->zigzag_index = zigzag4[linear_index];
-            }
-            output->mb_x = mb_x;
-            output->mb_y = mb_y;
-            output->scan8_index = scan8_index;
-            return true;
-        }
-        if (above) {
-            if (mb_y == 0) {
-                return false;
-            }
-            linear_index += dimension * (dimension - 1);//go to bottom
-            --mb_y;
-        } else {
-            if (mb_x == 0) {
-                return false;
-            }
-            linear_index += dimension - 1;//go to end of row
-            --mb_x;
-        }
-        if (sub_mb_size == 16) {
-            output->zigzag_index = zigzag16[linear_index];
-        } else {
-            output->zigzag_index = linear_index;
-        }
-        output->mb_x = mb_x;
-        output->mb_y = mb_y;
-        output->scan8_index = scan8_index;
-        return true;
+    if (above) {
+      if (mb_y == 0) {
+        return false;
+      }
+      linear_index += dimension * (dimension - 1);//go to bottom
+      --mb_y;
+    } else {
+      if (mb_x == 0) {
+        return false;
+      }
+      linear_index += dimension - 1;//go to end of row
+      --mb_x;
     }
-    int scan8 = scan_8[scan8_index];
-    int left_shift = (above ? 0 : -1);
-    int above_shift = (above ? -1 : 0);
-    auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
-    if (neighbor.neighbor_left) {
-        if (mb_x == 0){
-            return false;
-        } else {
-            --mb_x;
-        }
+    if (sub_mb_size == 16) {
+      output->zigzag_index = zigzag16[linear_index];
+    } else {
+      output->zigzag_index = linear_index;
     }
-    if (neighbor.neighbor_up) {
-        if (mb_y == 0) {
-            return false;
-        } else {
-            --mb_y;
-        }
-    }
-    output->scan8_index = neighbor.scan8_index;
-    if (sub_mb_size >= 32) {
-        output->scan8_index /= 4;
-        output->scan8_index *= 4; // round down to the nearest multiple of 4
-    }
-    output->zigzag_index = zigzag_index;
     output->mb_x = mb_x;
     output->mb_y = mb_y;
+    output->scan8_index = scan8_index;
     return true;
+  }
+  int scan8 = scan_8[scan8_index];
+  int left_shift = (above ? 0 : -1);
+  int above_shift = (above ? -1 : 0);
+  auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
+  if (neighbor.neighbor_left) {
+    if (mb_x == 0) {
+      return false;
+    } else {
+      --mb_x;
+    }
+  }
+  if (neighbor.neighbor_up) {
+    if (mb_y == 0) {
+      return false;
+    } else {
+      --mb_y;
+    }
+  }
+  output->scan8_index = neighbor.scan8_index;
+  if (sub_mb_size >= 32) {
+    output->scan8_index /= 4;
+    output->scan8_index *= 4; // round down to the nearest multiple of 4
+  }
+  output->zigzag_index = zigzag_index;
+  output->mb_x = mb_x;
+  output->mb_y = mb_y;
+  return true;
 }
 
 bool get_neighbor_coefficient(bool above,
                               int sub_mb_size,
                               CoefficientCoord input,
                               CoefficientCoord *output) {
-    if (input.scan8_index >= 16 * 3) {
-        return get_neighbor(above, sub_mb_size, input, output);
-    }
-    int zigzag_addition = 0;
+  if (input.scan8_index >= 16 * 3) {
+    return get_neighbor(above, sub_mb_size, input, output);
+  }
+  int zigzag_addition = 0;
 
-    if ((sub_mb_size & (sub_mb_size - 1)) != 0) {
-        zigzag_addition = 1;// the DC is not included
-    }
-    const uint8_t *zigzag_to_raster = unzigzag16;
-    const uint8_t *raster_to_zigzag = zigzag16;
-    int dim = 4;
-    if (sub_mb_size <= 4) {
-        dim = 2;
-        zigzag_to_raster = zigzag4;
-        raster_to_zigzag = unzigzag4;
-    }
-    if (sub_mb_size > 16) {
-        dim = 16;
-        zigzag_to_raster = zigzag64;
-        raster_to_zigzag = unzigzag64;
-    }
-    int raster_coord = zigzag_to_raster[input.zigzag_index + zigzag_addition];
-    //fprintf(stderr, "%d %d   %d -> %d\n", sub_mb_size, zigzag_addition, input.zigzag_index, raster_coord);
-    if (above) {
-        if (raster_coord >= dim) {
-            raster_coord -= dim;
-        } else {
-            return false;
-        }
+  if ((sub_mb_size & (sub_mb_size - 1)) != 0) {
+    zigzag_addition = 1;// the DC is not included
+  }
+  const uint8_t *zigzag_to_raster = unzigzag16;
+  const uint8_t *raster_to_zigzag = zigzag16;
+  int dim = 4;
+  if (sub_mb_size <= 4) {
+    dim = 2;
+    zigzag_to_raster = zigzag4;
+    raster_to_zigzag = unzigzag4;
+  }
+  if (sub_mb_size > 16) {
+    dim = 16;
+    zigzag_to_raster = zigzag64;
+    raster_to_zigzag = unzigzag64;
+  }
+  int raster_coord = zigzag_to_raster[input.zigzag_index + zigzag_addition];
+  //fprintf(stderr, "%d %d   %d -> %d\n", sub_mb_size, zigzag_addition, input.zigzag_index, raster_coord);
+  if (above) {
+    if (raster_coord >= dim) {
+      raster_coord -= dim;
     } else {
-        if (raster_coord & (dim - 1)) {
-            raster_coord -= 1;
-        } else {
-            return false;
-        }
+      return false;
     }
-    *output = input;
-    output->zigzag_index = raster_to_zigzag[raster_coord] - zigzag_addition;
-    return true;
+  } else {
+    if (raster_coord & (dim - 1)) {
+      raster_coord -= 1;
+    } else {
+      return false;
+    }
+  }
+  *output = input;
+  output->zigzag_index = raster_to_zigzag[raster_coord] - zigzag_addition;
+  return true;
 }
+
 #define STRINGIFY_COMMA(s) #s ,
 const char * billing_names [] = {EACH_PIP_CODING_TYPE(STRINGIFY_COMMA)};
 #undef STRINGIFY_COMMA
+
 class h264_model {
   public:
   CodingType coding_type = PIP_UNKNOWN;
