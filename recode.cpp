@@ -1653,7 +1653,7 @@ class decompressor {
 };
 
 
-int roundtrip(const std::string& input_filename, std::ostream* out) {
+int roundtrip(const std::string &input_filename, std::ostream *out) {
   std::stringstream original, compressed, decompressed;
   original << std::ifstream(input_filename).rdbuf();
   compressor c(input_filename, compressed);
@@ -1670,14 +1670,14 @@ int roundtrip(const std::string& input_filename, std::ostream* out) {
     Recoded compressed_proto;
     compressed_proto.ParseFromString(compressed.str());
     int proto_block_bytes = 0;
-    for (const auto& block : compressed_proto.block()) {
+    for (const auto &block : compressed_proto.block()) {
       proto_block_bytes += block.literal().size() + block.cabac().size();
     }
     double proto_overhead = (compressed.str().size() - proto_block_bytes) * 1.0 / compressed.str().size();
 
     std::cout << "Compress-decompress roundtrip succeeded:" << std::endl;
-    std::cout << " compression ratio: " << ratio*100. << "%" << std::endl;
-    std::cout << " protobuf overhead: " << proto_overhead*100. << "%" << std::endl;
+    std::cout << " compression ratio: " << ratio * 100. << "%" << std::endl;
+    std::cout << " protobuf overhead: " << proto_overhead * 100. << "%" << std::endl;
     return 0;
   } else {
     std::cerr << "Compress-decompress roundtrip failed." << std::endl;
@@ -1686,8 +1686,7 @@ int roundtrip(const std::string& input_filename, std::ostream* out) {
 }
 
 
-int
-main(int argc, char **argv) {
+int main(int argc, char **argv) {
   av_register_all();
 
   if (argc < 3 || argc > 4) {
@@ -1713,7 +1712,7 @@ main(int argc, char **argv) {
     } else {
       throw std::invalid_argument("Unknown command: " + command);
     }
-  } catch (const std::exception& e) {
+  } catch (const std::exception &e) {
     std::cerr << "Exception (" << typeid(e).name() << "): " << e.what() << std::endl;
     return 1;
   }
