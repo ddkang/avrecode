@@ -178,15 +178,15 @@ constexpr uint8_t unzigzag4[4] = {
 };
 
 constexpr uint8_t unzigzag16[16] = {
-    0, 1, 4, 8,
-    5, 2, 3, 6,
+    0,  1,  4,  8,
+    5,  2,  3,  6,
     9, 12, 13, 10,
     7, 11, 14, 15
 };
 constexpr uint8_t zigzag16[16] = {
-    0, 1, 5, 6,
-    2, 4, 7, 12,
-    3, 8, 11, 13,
+    0,  1,  5,  6,
+    2,  4,  7, 12,
+    3,  8, 11, 13,
     9, 10, 14, 15
 };
 constexpr uint8_t unzigzag64[64] = {
@@ -227,4 +227,17 @@ int log2(int y) {
     x++;
   }
   return x;
+}
+
+int av_check(int return_value, int expected_error = 0, const std::string& message = "") {
+  if (return_value >= 0 || return_value == expected_error) {
+    return return_value;
+  } else {
+    char err[AV_ERROR_MAX_STRING_SIZE];
+    av_make_error_string(err, AV_ERROR_MAX_STRING_SIZE, return_value);
+    throw std::runtime_error(message + ": " + err);
+  }
+}
+bool av_check(int return_value, const std::string& message = "") {
+  return av_check(return_value, 0, message);
 }
