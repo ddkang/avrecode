@@ -17,7 +17,7 @@ LDLIBS = -L./ffmpeg/libavdevice -lavdevice \
 
 recode: recode.o recode.pb.o ffmpeg/libavcodec/libavcodec.a
 
-recode.o: recode.cpp recode.pb.h arithmetic_code.h cabac_code.h
+recode.o: recode.cpp recode.pb.h arithmetic_code.h cabac_code.h recode.h
 
 recode.pb.cc recode.pb.h: recode.proto
 	protoc --cpp_out=. $<
