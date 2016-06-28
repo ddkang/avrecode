@@ -121,11 +121,13 @@ class decompressor {
 
   class cabac_decoder {
    public:
-    cabac_decoder(decompressor *d, CABACContext *ctx_in, const uint8_t *buf, int size) {
+    cabac_decoder(decompressor *d, CABACContext *ctx_in, const uint8_t *buf,
+                  uint8_t *state_start, int size) {
       index = d->recognize_coded_block(buf, size);
       block = &d->in.block(index);
       out = &d->blocks[index];
       model = nullptr;
+      this->state_start = state_start;
 
       if (block->has_cabac()) {
         model = &d->model;
@@ -144,7 +146,8 @@ class decompressor {
 
     ~cabac_decoder() { assert(out->done); }
 
-    int get(uint8_t *state) {
+    int get(uint8_t *state_pointer) {
+      int state = state_pointer - this->state_start;
       int symbol;
       if (model->coding_type == PIP_SIGNIFICANCE_EOB) {
         symbol = std::get<1>(model->get_model_key(state));
@@ -153,7 +156,7 @@ class decompressor {
           return model->probability_for_state(range, state);
         });
       }
-      size_t billable_bytes = cabac_encoder.put(symbol, state);
+      size_t billable_bytes = cabac_encoder.put(symbol, state_pointer);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
       }
@@ -163,9 +166,9 @@ class decompressor {
 
     int get_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, &model->bypass_context);
+        return model->probability_for_state(range, model->bypass_context);
       });
-      model->update_state(symbol, &model->bypass_context);
+      model->update_state(symbol, model->bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
@@ -175,9 +178,9 @@ class decompressor {
 
     int get_terminate() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, &model->terminate_context);
+        return model->probability_for_state(range, model->terminate_context);
       });
-      model->update_state(symbol, &model->terminate_context);
+      model->update_state(symbol, model->terminate_context);
       size_t billable_bytes = cabac_encoder.put_terminate(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
@@ -229,6 +232,7 @@ class decompressor {
     int index;
     const Recoded::Block *block;
     block_state *out = nullptr;
+    uint8_t *state_start;
 
     h264_model *model;
     std::unique_ptr <recoded_code::decoder<const char *, uint8_t>> decoder;

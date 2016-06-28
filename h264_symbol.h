@@ -18,7 +18,7 @@ extern "C" {
 
 class h264_symbol {
  public:
-  h264_symbol(int symbol, const uint8_t *state)
+  h264_symbol(int symbol, const int state)
       : symbol(symbol), state(state) {
   }
 
@@ -48,7 +48,7 @@ class h264_symbol {
       LOG_NEIGHBORS("%d ", symbol);
       model->disable_debug();
     }
-    if (state == &model->terminate_context && symbol) {
+    if (state == model->terminate_context && symbol) {
       encoder.finish();
       out->set_cabac(&encoder_out[0], encoder_out.size());
     }
@@ -56,5 +56,5 @@ class h264_symbol {
 
  private:
   int symbol;
-  const uint8_t *state;
+  const int state;
 };

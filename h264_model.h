@@ -285,7 +285,7 @@ class h264_model {
     return true;
   }
 
-  model_key get_model_key(const uint8_t *context) const {
+  model_key get_model_key(int context) const {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
         return model_key(context, 0, 0);
@@ -408,7 +408,7 @@ class h264_model {
         (void) neighbor_left;
         (void) coeff_neighbor_above;
         (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
-        return model_key(&significance_context,
+        return model_key(significance_context,
                          64 * num_nonzeros + nonzeros_observed,
                          sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * cat_lookup[sub_mb_cat]);
       }
@@ -416,7 +416,7 @@ class h264_model {
         // FIXME: why doesn't this prior help at all
         int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
 
-        return model_key(NULL, num_nonzeros == nonzeros_observed, 0);
+        return model_key(-4, num_nonzeros == nonzeros_observed, 0);
       }
       default:
         break;
@@ -431,7 +431,7 @@ class h264_model {
     return (range / total) * e->pos;
   }
 
-  range_t probability_for_state(range_t range, const uint8_t *context) {
+  range_t probability_for_state(range_t range, int context) {
     return probability_for_model_key(range, get_model_key(context));
   }
 
@@ -496,7 +496,7 @@ class h264_model {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
           put_or_get(
-              model_key(&(STATE_FOR_NUM_NONZERO_BIT[i]),
+              model_key(1024 + i,
                         serialized_so_far + 64 * (frames[!cur_frame].meta_at(
                             mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit) +
                         128 * left_nonzero_bit +
@@ -636,7 +636,7 @@ class h264_model {
     }
   }
 
-  void update_state(int symbol, const uint8_t *context) {
+  void update_state(int symbol, int context) {
     update_state_for_model_key(symbol, get_model_key(context));
   }
 
@@ -659,7 +659,7 @@ class h264_model {
     update_state_tracking(symbol);
   }
 
-  const uint8_t bypass_context = 0, terminate_context = 0, significance_context = 0;
+  const int bypass_context = -1, terminate_context = -2, significance_context = -3;
   CoefficientCoord mb_coord;
   int nonzeros_observed = 0;
   int sub_mb_cat = -1;

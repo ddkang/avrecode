@@ -53,9 +53,11 @@ class compressor {
 
   class cabac_decoder {
    public:
-    cabac_decoder(compressor *c, CABACContext *ctx_in, const uint8_t *buf, int size) {
+    cabac_decoder(compressor *c, CABACContext *ctx_in, const uint8_t *buf,
+                  uint8_t *state_start, int size) {
       out = c->find_next_coded_block_and_emit_literal(buf, size);
       model = nullptr;
+      this->state_start = state_start;
       if (out == nullptr) {
         // We're skipping this block, so disable calls to our hooks.
         ctx_in->coding_hooks = nullptr;
@@ -78,7 +80,7 @@ class compressor {
 
     ~cabac_decoder() { assert(out == nullptr || out->has_cabac()); }
 
-    void execute_symbol(int symbol, const uint8_t *state) {
+    void execute_symbol(int symbol, int state) {
       h264_symbol sym(symbol, state);
 #define QUEUE_MODE
 #ifdef QUEUE_MODE
@@ -96,20 +98,20 @@ class compressor {
 
     int get(uint8_t *state) {
       int symbol = ::ff_get_cabac(&ctx, state);
-      execute_symbol(symbol, state);
+      execute_symbol(symbol, state - this->state_start);
       return symbol;
     }
 
     int get_bypass() {
       int symbol = ::ff_get_cabac_bypass(&ctx);
-      execute_symbol(symbol, &model->bypass_context);
+      execute_symbol(symbol, model->bypass_context);
       return symbol;
     }
 
     int get_terminate() {
       int n = ::ff_get_cabac_terminate(&ctx);
       int symbol = (n != 0);
-      execute_symbol(symbol, &model->terminate_context);
+      execute_symbol(symbol, model->terminate_context);
       return symbol;
     }
 
@@ -182,6 +184,7 @@ class compressor {
 
     Recoded::Block *out;
     CABACContext ctx;
+    uint8_t *state_start;
 
     compressor *c;
     h264_model *model;

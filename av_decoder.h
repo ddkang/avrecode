@@ -93,9 +93,10 @@ class av_decoder {
     return self->driver->read_packet(buffer_out, size);
   }
   struct cabac {
-    static void* init_decoder(void *opaque, CABACContext *ctx, const uint8_t *buf, int size) {
+    static void* init_decoder(void *opaque, CABACContext *ctx, const uint8_t *buf,
+                              uint8_t *state_start, int size) {
       av_decoder *self = static_cast<av_decoder*>(opaque);
-      auto *cabac_decoder = new typename Driver::cabac_decoder(self->driver, ctx, buf, size);
+      auto *cabac_decoder = new typename Driver::cabac_decoder(self->driver, ctx, buf, state_start, size);
       self->cabac_contexts[ctx].reset(cabac_decoder);
       return cabac_decoder;
     }
