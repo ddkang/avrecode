@@ -18,7 +18,7 @@ extern "C" {
 
 class h264_symbol {
  public:
-  h264_symbol(int symbol, const void *state)
+  h264_symbol(int symbol, const uint8_t *state)
       : symbol(symbol), state(state) {
   }
 
@@ -56,5 +56,5 @@ class h264_symbol {
 
  private:
   int symbol;
-  const void *state;
+  const uint8_t *state;
 };

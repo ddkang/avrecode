@@ -78,7 +78,7 @@ class compressor {
 
     ~cabac_decoder() { assert(out == nullptr || out->has_cabac()); }
 
-    void execute_symbol(int symbol, const void *state) {
+    void execute_symbol(int symbol, const uint8_t *state) {
       h264_symbol sym(symbol, state);
 #define QUEUE_MODE
 #ifdef QUEUE_MODE

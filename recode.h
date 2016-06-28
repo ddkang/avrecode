@@ -134,7 +134,7 @@ constexpr r_scan8 reverse_scan_8[15][8] = {
 typedef uint64_t range_t;
 typedef arithmetic_code<range_t, uint8_t> recoded_code;
 
-typedef std::tuple<const void*, int, int> model_key;
+typedef std::tuple<const uint8_t*, int, int> model_key;
 /*
 not sure these tables are the ones we want to use
 constexpr uint8_t unzigzag16[16] = {

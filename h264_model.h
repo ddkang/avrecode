@@ -285,7 +285,7 @@ class h264_model {
     return true;
   }
 
-  model_key get_model_key(const void *context) const {
+  model_key get_model_key(const uint8_t *context) const {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
         return model_key(context, 0, 0);
@@ -414,10 +414,9 @@ class h264_model {
       }
       case PIP_SIGNIFICANCE_EOB: {
         // FIXME: why doesn't this prior help at all
-        static int fake_context = 0;
         int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
 
-        return model_key(&fake_context, num_nonzeros == nonzeros_observed, 0);
+        return model_key(NULL, num_nonzeros == nonzeros_observed, 0);
       }
       default:
         break;
@@ -432,7 +431,7 @@ class h264_model {
     return (range / total) * e->pos;
   }
 
-  range_t probability_for_state(range_t range, const void *context) {
+  range_t probability_for_state(range_t range, const uint8_t *context) {
     return probability_for_model_key(range, get_model_key(context));
   }
 
@@ -637,7 +636,7 @@ class h264_model {
     }
   }
 
-  void update_state(int symbol, const void *context) {
+  void update_state(int symbol, const uint8_t *context) {
     update_state_for_model_key(symbol, get_model_key(context));
   }
 
