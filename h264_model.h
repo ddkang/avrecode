@@ -13,9 +13,9 @@ extern "C" {
 #include "recode.pb.h"
 #include "framebuffer.h"
 #include "recode.h"
+#include "nd_array.h"
 
 #pragma once
-
 
 bool get_neighbor_sub_mb(bool above, int sub_mb_size,
                          CoefficientCoord input,
@@ -214,6 +214,14 @@ const char * billing_names [] = {EACH_PIP_CODING_TYPE(STRINGIFY_COMMA)};
 #undef STRINGIFY_COMMA
 
 class h264_model {
+ private:
+  struct estimator {
+    int pos = 1, neg = 1;
+  };
+  typedef Sirikata::Array2d<estimator, 64*64, 16*2*14> sig_array;
+  typedef Sirikata::Array3d<estimator, 6, 384*3, 14*4> queue_array;
+  const int CABAC_STATE_SIZE = 1024;  // FIXME
+
  public:
   CodingType coding_type = PIP_UNKNOWN;
   size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
@@ -228,6 +236,8 @@ class h264_model {
     do_print = false;
     memset(bill, 0, sizeof(bill));
     memset(cabac_bill, 0, sizeof(cabac_bill));
+    significance_estimator = new sig_array; // FIXME: leak
+    queue_estimators = new queue_array;
   }
 
   void enable_debug() {
@@ -410,13 +420,13 @@ class h264_model {
         (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
         return model_key(significance_context,
                          64 * num_nonzeros + nonzeros_observed,
-                         sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * cat_lookup[sub_mb_cat]);
+                         sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * sub_mb_cat);
       }
       case PIP_SIGNIFICANCE_EOB: {
         // FIXME: why doesn't this prior help at all
         int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
 
-        return model_key(-4, num_nonzeros == nonzeros_observed, 0);
+        return model_key(eob_context, num_nonzeros == nonzeros_observed, 0);
       }
       default:
         break;
@@ -426,7 +436,7 @@ class h264_model {
   }
 
   range_t probability_for_model_key(range_t range, model_key key) {
-    auto *e = &estimators[key];
+    auto *e = get_estimator(key);
     int total = e->pos + e->neg;
     return (range / total) * e->pos;
   }
@@ -496,7 +506,7 @@ class h264_model {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
           put_or_get(
-              model_key(1024 + i,
+              model_key(CABAC_STATE_SIZE + i,
                         serialized_so_far + 64 * (frames[!cur_frame].meta_at(
                             mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit) +
                         128 * left_nonzero_bit +
@@ -645,7 +655,7 @@ class h264_model {
       int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
       assert(symbol == (num_nonzeros == nonzeros_observed));
     }
-    auto *e = &estimators[key];
+    auto *e = get_estimator(key);
     if (symbol) {
       e->pos++;
     } else {
@@ -659,7 +669,8 @@ class h264_model {
     update_state_tracking(symbol);
   }
 
-  const int bypass_context = -1, terminate_context = -2, significance_context = -3;
+  static constexpr int bypass_context = -1, terminate_context = -2;
+  static constexpr int significance_context = -3, eob_context = -4;
   CoefficientCoord mb_coord;
   int nonzeros_observed = 0;
   int sub_mb_cat = -1;
@@ -667,8 +678,33 @@ class h264_model {
   int sub_mb_is_dc = 0;
   int sub_mb_chroma422 = 0;
  private:
-  struct estimator {
-    int pos = 1, neg = 1;
-  };
+  sig_array *significance_estimator; // FIXME: increase dimension
+  queue_array *queue_estimators; // FIXME: increase dimension
+  estimator bypass_estimator;
+  estimator terminate_estimator;
+  estimator eob_estimator[2];
+  estimator cabac_estimator[1024]; // FIXME
+
   std::map <model_key, estimator> estimators;
+
+  estimator* get_estimator(model_key key) {
+    switch (std::get<0>(key)) {
+      case bypass_context:
+        return &bypass_estimator;
+      case terminate_context:
+        return &terminate_estimator;
+      case significance_context:
+        return &significance_estimator->at(std::get<1>(key), std::get<2>(key));
+      case eob_context:
+        return &eob_estimator[std::get<1>(key)];
+      default:
+        if (std::get<0>(key) < CABAC_STATE_SIZE)
+          return &cabac_estimator[std::get<0>(key)];
+        else
+          return &queue_estimators->at(std::get<0>(key) - CABAC_STATE_SIZE, std::get<1>(key), std::get<2>(key));
+    }
+  }
 };
+
+constexpr int h264_model::bypass_context, h264_model::terminate_context;
+constexpr int h264_model::significance_context, h264_model::eob_context;
