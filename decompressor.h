@@ -150,7 +150,7 @@ class decompressor {
       int state = state_pointer - this->state_start;
       int symbol;
       if (model->coding_type == PIP_SIGNIFICANCE_EOB) {
-        symbol = std::get<1>(model->get_model_key(state));
+        symbol = model->eob_symbol();
       } else {
         symbol = decoder->get([&](range_t range) {
           return model->probability_for_state(range, state);
@@ -196,11 +196,11 @@ class decompressor {
       bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
       if (begin_queue && ct) {
         model->finished_queueing(ct,
-                                 [&](model_key key, int *symbol) {
+                                 [&](h264_model::estimator *e, int *symbol) {
                                    *symbol = decoder->get([&](range_t range) {
-                                     return model->probability_for_model_key(range, key);
+                                     return model->probability_for_model_key(range, e);
                                    });
-                                   model->update_state_for_model_key(*symbol, key);
+                                   model->update_state_for_model_key(*symbol, e);
                                  });
         static int i = 0;
         if (i++ < 10) {

@@ -135,11 +135,11 @@ class compressor {
       if ((ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB)) {
         stop_queueing_symbols();
         model->finished_queueing(ct,
-                                 [&](model_key key, int *symbol) {
+                                 [&](h264_model::estimator *e, int *symbol) {
                                    size_t billable_bytes = encoder.put(*symbol, [&](range_t range) {
-                                     return model->probability_for_model_key(range, key);
+                                     return model->probability_for_model_key(range, e);
                                    });
-                                   model->update_state_for_model_key(*symbol, key);
+                                   model->update_state_for_model_key(*symbol, e);
                                    if (billable_bytes) {
                                      model->billable_bytes(billable_bytes);
                                    }

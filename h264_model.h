@@ -214,12 +214,14 @@ const char * billing_names [] = {EACH_PIP_CODING_TYPE(STRINGIFY_COMMA)};
 #undef STRINGIFY_COMMA
 
 class h264_model {
- private:
+ public:
   struct estimator {
     int pos = 1, neg = 1;
   };
-  typedef Sirikata::Array2d<estimator, 64*64, 16*2*14> sig_array;
-  typedef Sirikata::Array3d<estimator, 6, 384*3, 14*4> queue_array;
+
+ private:
+  typedef Sirikata::Array3d<estimator, 64, 64, 16*2*14> sig_array;
+  typedef Sirikata::Array6d<estimator, 6, 64, 2, 3, 3, 14*4> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
  public:
@@ -295,154 +297,20 @@ class h264_model {
     return true;
   }
 
-  model_key get_model_key(int context) const {
-    switch (coding_type) {
-      case PIP_SIGNIFICANCE_NZ:
-        return model_key(context, 0, 0);
-      case PIP_UNKNOWN:
-      case PIP_UNREACHABLE:
-      case PIP_RESIDUALS:
-        return model_key(context, 0, 0);
-      case PIP_SIGNIFICANCE_MAP: {
-        static const uint8_t sig_coeff_flag_offset_8x8[2][63] = {
-            {0, 1, 2, 3, 4, 5, 5, 4, 4, 3, 3, 4, 4, 4, 5, 5,
-                4, 4, 4,  4,  3, 3,  6,  7,  7, 7, 8,  9,  10, 9,  8,  7,
-                7, 6, 11, 12, 13, 11, 6,  7,  8, 9, 14, 10, 9, 8,  6,  11,
-                12, 13, 11, 6, 9,  14, 10, 9, 11, 12, 13, 11, 14, 10, 12},
-            {0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 4, 5,
-                6, 9, 10, 10, 8, 11, 12, 11, 9, 9, 10, 10, 8,  11, 12, 11,
-                9, 9, 10, 10, 8,  11, 12, 11, 9, 9, 10, 10, 8, 13, 13, 9,
-                9,  10, 10, 8, 13, 13, 9,  9, 10, 10, 14, 14, 14, 14, 14}
-        };
-        int cat_lookup[14] = {105 + 0, 105 + 15, 105 + 29, 105 + 44, 105 + 47, 402, 484 + 0, 484 + 15, 484 + 29, 660,
-                              528 + 0, 528 + 15, 528 + 29, 718};
-        static const uint8_t sig_coeff_offset_dc[7] = {0, 0, 1, 1, 2, 2, 2};
-        int zigzag_offset = mb_coord.zigzag_index;
-        if (sub_mb_is_dc && sub_mb_chroma422) {
-          assert(mb_coord.zigzag_index < 7);
-          zigzag_offset = sig_coeff_offset_dc[mb_coord.zigzag_index];
-        } else {
-          if (sub_mb_size > 32) {
-            assert(mb_coord.zigzag_index < 63);
-            zigzag_offset = sig_coeff_flag_offset_8x8[0][mb_coord.zigzag_index];
-          }
-        }
-        assert(sub_mb_cat < (int) (sizeof(cat_lookup) / sizeof(cat_lookup[0])));
-        int neighbor_above = 2;
-        int neighbor_left = 2;
-        int coeff_neighbor_above = 2;
-        int coeff_neighbor_left = 2;
-        if (do_print) {
-          LOG_NEIGHBORS("[");
-        }
-        {
-          CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
-          if (get_neighbor(false, sub_mb_size, mb_coord, &neighbor_left_coord)) {
-            int16_t tmp = 0;
-            if (fetch(false, true, neighbor_left_coord, &tmp)) {
-              neighbor_left = !!tmp;
-              if (do_print) {
-                LOG_NEIGHBORS("%d,", tmp);
-              }
-            } else {
-              neighbor_left = 3;
-              if (do_print) {
-                LOG_NEIGHBORS("_,");
-              }
-            }
-          } else {
-            if (do_print) {
-              LOG_NEIGHBORS("x,");
-            }
-          }
-        }
-        {
-          CoefficientCoord neighbor_above_coord = {0, 0, 0, 0};
-          if (get_neighbor(true, sub_mb_size, mb_coord, &neighbor_above_coord)) {
-            int16_t tmp = 0;
-            if (fetch(false, true, neighbor_above_coord, &tmp)) {
-              neighbor_above = !!tmp;
-              if (do_print) {
-                LOG_NEIGHBORS("%d,", tmp);
-              }
-            } else {
-              neighbor_above = 3;
-              if (do_print) {
-                LOG_NEIGHBORS("_,");
-              }
-            }
-          } else {
-            if (do_print) {
-              LOG_NEIGHBORS("x,");
-            }
-          }
 
-        }
-        {
-          CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
-          if (get_neighbor_coefficient(false, sub_mb_size, mb_coord, &neighbor_left_coord)) {
-            int16_t tmp = 0;
-            if (fetch(false, true, neighbor_left_coord, &tmp)) {
-              coeff_neighbor_left = !!tmp;
-            } else {
-              coeff_neighbor_left = 3;
-            }
-          } else {
-          }
-        }
-        {
-          CoefficientCoord neighbor_above_coord = {0, 0, 0, 0};
-          if (get_neighbor_coefficient(true, sub_mb_size, mb_coord, &neighbor_above_coord)) {
-            int16_t tmp = 0;
-            if (fetch(false, true, neighbor_above_coord, &tmp)) {
-              coeff_neighbor_above = !!tmp;
-            } else {
-              coeff_neighbor_above = 3;
-            }
-          } else {
-          }
-        }
-
-        // FIXM: why doesn't this prior help at all
-        {
-          int16_t output = 0;
-          if (fetch(true, true, mb_coord, &output)) {
-            if (do_print) LOG_NEIGHBORS("%d] ", output);
-          } else {
-            if (do_print) LOG_NEIGHBORS("x] ");
-          }
-        }
-        //const BlockMeta &meta = frames[!cur_frame].meta_at(mb_x, mb_y);
-        int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
-        (void) neighbor_above;
-        (void) neighbor_left;
-        (void) coeff_neighbor_above;
-        (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
-        return model_key(significance_context,
-                         64 * num_nonzeros + nonzeros_observed,
-                         sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * sub_mb_cat);
-      }
-      case PIP_SIGNIFICANCE_EOB: {
-        // FIXME: why doesn't this prior help at all
-        int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
-
-        return model_key(eob_context, num_nonzeros == nonzeros_observed, 0);
-      }
-      default:
-        break;
-    }
-    assert(false && "Unreachable");
-    abort();
+  int eob_symbol() const {
+    int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
+    return num_nonzeros == nonzeros_observed;
   }
 
-  range_t probability_for_model_key(range_t range, model_key key) {
-    auto *e = get_estimator(key);
+  range_t probability_for_model_key(range_t range, estimator *e) {
     int total = e->pos + e->neg;
     return (range / total) * e->pos;
   }
 
   range_t probability_for_state(range_t range, int context) {
-    return probability_for_model_key(range, get_model_key(context));
+    auto *e = get_estimator(context);
+    return probability_for_model_key(range, e);
   }
 
   void update_frame_spec(int frame_num, int mb_width, int mb_height) {
@@ -505,13 +373,13 @@ class h264_model {
           if (above_nonzero) {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
-          put_or_get(
-              model_key(CABAC_STATE_SIZE + i,
-                        serialized_so_far + 64 * (frames[!cur_frame].meta_at(
-                            mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit) +
-                        128 * left_nonzero_bit +
-                        384 * above_nonzero_bit,
-                        meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 + sub_mb_cat * 4), &nonzero_bits[i]);
+          auto *e = &queue_estimators->at(i, serialized_so_far,
+                                          (frames[!cur_frame].meta_at(
+                                              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
+                                          left_nonzero_bit,
+                                          above_nonzero_bit,
+                                          meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 * 4 + sub_mb_cat * 8);
+          put_or_get(e, &nonzero_bits[i]);
           if (nonzero_bits[i]) {
             serialized_so_far |= cur_bit;
           }
@@ -647,15 +515,15 @@ class h264_model {
   }
 
   void update_state(int symbol, int context) {
-    update_state_for_model_key(symbol, get_model_key(context));
+    auto *e = get_estimator(context);
+    update_state_for_model_key(symbol, e);
   }
 
-  void update_state_for_model_key(int symbol, model_key key) {
+  void update_state_for_model_key(int symbol, estimator* e) {
     if (coding_type == PIP_SIGNIFICANCE_EOB) {
       int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
       assert(symbol == (num_nonzeros == nonzeros_observed));
     }
-    auto *e = get_estimator(key);
     if (symbol) {
       e->pos++;
     } else {
@@ -678,31 +546,165 @@ class h264_model {
   int sub_mb_is_dc = 0;
   int sub_mb_chroma422 = 0;
  private:
-  sig_array *significance_estimator; // FIXME: increase dimension
-  queue_array *queue_estimators; // FIXME: increase dimension
+  sig_array *significance_estimator;
+  queue_array *queue_estimators;
   estimator bypass_estimator;
   estimator terminate_estimator;
   estimator eob_estimator[2];
   estimator cabac_estimator[1024]; // FIXME
 
-  std::map <model_key, estimator> estimators;
 
-  estimator* get_estimator(model_key key) {
-    switch (std::get<0>(key)) {
+  // TODO: DELETE THIS
+  estimator* get_estimator_helper(int context) {
+    switch (context) {
       case bypass_context:
         return &bypass_estimator;
       case terminate_context:
         return &terminate_estimator;
-      case significance_context:
-        return &significance_estimator->at(std::get<1>(key), std::get<2>(key));
       case eob_context:
-        return &eob_estimator[std::get<1>(key)];
+        return &eob_estimator[eob_symbol()];
       default:
-        if (std::get<0>(key) < CABAC_STATE_SIZE)
-          return &cabac_estimator[std::get<0>(key)];
-        else
-          return &queue_estimators->at(std::get<0>(key) - CABAC_STATE_SIZE, std::get<1>(key), std::get<2>(key));
+        if (context >= 0 && context < CABAC_STATE_SIZE)
+          return &cabac_estimator[context];
+        else {
+          fprintf(stderr, "UHOH\n");
+          assert(false);
+        }
     }
+  }
+
+  estimator* get_estimator(int context){
+    switch (coding_type) {
+      case PIP_SIGNIFICANCE_MAP: {
+        static const uint8_t sig_coeff_flag_offset_8x8[2][63] = {
+            {0, 1, 2, 3, 4, 5, 5, 4, 4, 3, 3, 4, 4, 4, 5, 5,
+                4, 4, 4,  4,  3, 3,  6,  7,  7, 7, 8,  9,  10, 9,  8,  7,
+                7, 6, 11, 12, 13, 11, 6,  7,  8, 9, 14, 10, 9, 8,  6,  11,
+                12, 13, 11, 6, 9,  14, 10, 9, 11, 12, 13, 11, 14, 10, 12},
+            {0, 1, 1, 2, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 4, 5,
+                6, 9, 10, 10, 8, 11, 12, 11, 9, 9, 10, 10, 8,  11, 12, 11,
+                9, 9, 10, 10, 8,  11, 12, 11, 9, 9, 10, 10, 8, 13, 13, 9,
+                9,  10, 10, 8, 13, 13, 9,  9, 10, 10, 14, 14, 14, 14, 14}
+        };
+        static const uint8_t sig_coeff_offset_dc[7] = {0, 0, 1, 1, 2, 2, 2};
+        int zigzag_offset = mb_coord.zigzag_index;
+        if (sub_mb_is_dc && sub_mb_chroma422) {
+          assert(mb_coord.zigzag_index < 7);
+          zigzag_offset = sig_coeff_offset_dc[mb_coord.zigzag_index];
+        } else {
+          if (sub_mb_size > 32) {
+            assert(mb_coord.zigzag_index < 63);
+            zigzag_offset = sig_coeff_flag_offset_8x8[0][mb_coord.zigzag_index];
+          }
+        }
+        assert(sub_mb_cat < 14);  // FIXME: although this let's us get rid of a table
+        int neighbor_above = 2;
+        int neighbor_left = 2;
+        int coeff_neighbor_above = 2;
+        int coeff_neighbor_left = 2;
+        if (do_print) {
+          LOG_NEIGHBORS("[");
+        }
+        {
+          CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
+          if (get_neighbor(false, sub_mb_size, mb_coord, &neighbor_left_coord)) {
+            int16_t tmp = 0;
+            if (fetch(false, true, neighbor_left_coord, &tmp)) {
+              neighbor_left = !!tmp;
+              if (do_print) {
+                LOG_NEIGHBORS("%d,", tmp);
+              }
+            } else {
+              neighbor_left = 3;
+              if (do_print) {
+                LOG_NEIGHBORS("_,");
+              }
+            }
+          } else {
+            if (do_print) {
+              LOG_NEIGHBORS("x,");
+            }
+          }
+        }
+        {
+          CoefficientCoord neighbor_above_coord = {0, 0, 0, 0};
+          if (get_neighbor(true, sub_mb_size, mb_coord, &neighbor_above_coord)) {
+            int16_t tmp = 0;
+            if (fetch(false, true, neighbor_above_coord, &tmp)) {
+              neighbor_above = !!tmp;
+              if (do_print) {
+                LOG_NEIGHBORS("%d,", tmp);
+              }
+            } else {
+              neighbor_above = 3;
+              if (do_print) {
+                LOG_NEIGHBORS("_,");
+              }
+            }
+          } else {
+            if (do_print) {
+              LOG_NEIGHBORS("x,");
+            }
+          }
+
+        }
+        {
+          CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
+          if (get_neighbor_coefficient(false, sub_mb_size, mb_coord, &neighbor_left_coord)) {
+            int16_t tmp = 0;
+            if (fetch(false, true, neighbor_left_coord, &tmp)) {
+              coeff_neighbor_left = !!tmp;
+            } else {
+              coeff_neighbor_left = 3;
+            }
+          } else {
+          }
+        }
+        {
+          CoefficientCoord neighbor_above_coord = {0, 0, 0, 0};
+          if (get_neighbor_coefficient(true, sub_mb_size, mb_coord, &neighbor_above_coord)) {
+            int16_t tmp = 0;
+            if (fetch(false, true, neighbor_above_coord, &tmp)) {
+              coeff_neighbor_above = !!tmp;
+            } else {
+              coeff_neighbor_above = 3;
+            }
+          } else {
+          }
+        }
+
+        // FIXME: why doesn't this prior help at all
+        {
+          int16_t output = 0;
+          if (fetch(true, true, mb_coord, &output)) {
+            if (do_print) LOG_NEIGHBORS("%d] ", output);
+          } else {
+            if (do_print) LOG_NEIGHBORS("x] ");
+          }
+        }
+        //const BlockMeta &meta = frames[!cur_frame].meta_at(mb_x, mb_y);
+        int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
+        (void) neighbor_above;
+        (void) neighbor_left;
+        (void) coeff_neighbor_above;
+        (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
+        return &significance_estimator->at(nonzeros_observed,
+                                           num_nonzeros,
+                                           sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * sub_mb_cat);
+      }
+      // FIXME: why doesn't this prior help at all
+      case PIP_SIGNIFICANCE_EOB:
+        return &eob_estimator[eob_symbol()];
+      case PIP_SIGNIFICANCE_NZ:
+      case PIP_UNKNOWN:
+      case PIP_UNREACHABLE:
+      case PIP_RESIDUALS:
+        return get_estimator_helper(context);
+      default:
+        break;
+    }
+    assert(false && "Unreachable");
+    abort();
   }
 };
 
