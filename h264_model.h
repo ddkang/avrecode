@@ -220,7 +220,7 @@ class h264_model {
   };
 
  private:
-  typedef Sirikata::Array3d<estimator, 64, 64, 16*2*14> sig_array;
+  typedef Sirikata::Array6d<estimator, 64, 64, 16*2, 14, 4, 4> sig_array;
   typedef Sirikata::Array6d<estimator, 6, 64, 2, 3, 3, 14*4> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
@@ -529,8 +529,8 @@ class h264_model {
     } else {
       e->neg++;
     }
-    if ((coding_type != PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0x60)
-        || (coding_type == PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0x50)) {
+    if ((coding_type != PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0xA0)
+        || (coding_type == PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0x90)) {
       e->pos = (e->pos + 1) / 2;
       e->neg = (e->neg + 1) / 2;
     }
@@ -573,7 +573,7 @@ class h264_model {
     }
   }
 
-  estimator* get_estimator(int context){
+  estimator* get_estimator(int context) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_MAP: {
         static const uint8_t sig_coeff_flag_offset_8x8[2][63] = {
@@ -655,7 +655,7 @@ class h264_model {
             if (fetch(false, true, neighbor_left_coord, &tmp)) {
               coeff_neighbor_left = !!tmp;
             } else {
-              coeff_neighbor_left = 3;
+              coeff_neighbor_left = 2;
             }
           } else {
           }
@@ -667,7 +667,7 @@ class h264_model {
             if (fetch(false, true, neighbor_above_coord, &tmp)) {
               coeff_neighbor_above = !!tmp;
             } else {
-              coeff_neighbor_above = 3;
+              coeff_neighbor_above = 2;
             }
           } else {
           }
@@ -690,7 +690,9 @@ class h264_model {
         (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
         return &significance_estimator->at(nonzeros_observed,
                                            num_nonzeros,
-                                           sub_mb_is_dc + zigzag_offset * 2 + 16 * 2 * sub_mb_cat);
+                                           sub_mb_is_dc + zigzag_offset * 2,
+                                           sub_mb_cat,
+                                           coeff_neighbor_above, coeff_neighbor_left);
       }
       // FIXME: why doesn't this prior help at all
       case PIP_SIGNIFICANCE_EOB:

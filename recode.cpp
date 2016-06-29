@@ -73,6 +73,7 @@ int roundtrip(const std::string &input_filename, std::ostream *out) {
     std::cout << "Compress-decompress roundtrip succeeded:" << std::endl;
     std::cout << " compression ratio: " << ratio * 100. << "%" << std::endl;
     std::cout << " protobuf overhead: " << proto_overhead * 100. << "%" << std::endl;
+    std::cout << ratio << std::endl;
     return 0;
   } else {
     std::cerr << "Compress-decompress roundtrip failed." << std::endl;
@@ -97,8 +98,13 @@ int main(int argc, char **argv) {
 
   try {
     if (command == "compress") {
-      compressor c(input_filename, out_file.is_open() ? out_file : std::cout);
+      std::stringstream original, compressed;
+      original << std::ifstream(input_filename).rdbuf();
+      // compressor c(input_filename, out_file.is_open() ? out_file : std::cout);
+      compressor c(input_filename, compressed);
       c.run();
+      double ratio = compressed.str().size() * 1.0 / original.str().size();
+      std::cout << ratio << std::endl;
     } else if (command == "decompress") {
       decompressor d(input_filename, out_file.is_open() ? out_file : std::cout);
       d.run();
