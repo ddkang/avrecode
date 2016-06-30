@@ -59,6 +59,7 @@ int roundtrip(const std::string &input_filename, std::ostream *out) {
   if (original.str() == decompressed.str()) {
     if (out) {
       (*out) << compressed.str();
+      out->flush();
     }
     double ratio = compressed.str().size() * 1.0 / original.str().size();
 
@@ -100,9 +101,14 @@ int main(int argc, char **argv) {
     if (command == "compress") {
       std::stringstream original, compressed;
       original << std::ifstream(input_filename).rdbuf();
+
       // compressor c(input_filename, out_file.is_open() ? out_file : std::cout);
       compressor c(input_filename, compressed);
       c.run();
+      std::ostream *out = out_file.is_open() ? &out_file : &std::cout;
+      (*out) << compressed.str();
+      out->flush();
+
       double ratio = compressed.str().size() * 1.0 / original.str().size();
       std::cout << ratio << std::endl;
     } else if (command == "decompress") {

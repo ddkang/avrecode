@@ -184,7 +184,7 @@ bool get_neighbor_coefficient(bool above,
     raster_to_zigzag = unzigzag4;
   }
   if (sub_mb_size > 16) {
-    dim = 16;
+    dim = 8;
     zigzag_to_raster = zigzag64;
     raster_to_zigzag = unzigzag64;
   }
@@ -220,8 +220,8 @@ class h264_model {
   };
 
  private:
-  typedef Sirikata::Array6d<estimator, 64, 64, 16*2, 14, 4, 4> sig_array;
-  typedef Sirikata::Array6d<estimator, 6, 64, 2, 3, 3, 14*4> queue_array;
+  typedef Sirikata::Array7d<estimator, 64, 64, 16*2, 14, 4, 4, 2> sig_array;
+  typedef Sirikata::Array7d<estimator, 6, 32, 2, 3, 3, 2 * 2 * 2, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
  public:
@@ -292,8 +292,9 @@ class h264_model {
         return false;
       }
     }
-    *output = frames[previous ? !cur_frame : cur_frame].at(coord.mb_x, coord.mb_y).residual[coord.scan8_index * 16 +
-                                                                                            coord.zigzag_index];
+    *output = frames[previous ? !cur_frame : cur_frame].
+        at(coord.mb_x, coord.mb_y).residual[coord.scan8_index * 16 +
+                                            coord.zigzag_index];
     return true;
   }
 
@@ -308,8 +309,8 @@ class h264_model {
     return (range / total) * e->pos;
   }
 
-  range_t probability_for_state(range_t range, int context) {
-    auto *e = get_estimator(context);
+  range_t probability_for_state(range_t range, int context, int symbol) {
+    auto *e = get_estimator(context, symbol);
     return probability_for_model_key(range, e);
   }
 
@@ -373,12 +374,25 @@ class h264_model {
           if (above_nonzero) {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
+          /*auto *e = &queue_estimators->at(i, serialized_so_far,
+                                          (frames[!cur_frame].meta_at(
+                                              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
+                                          left_nonzero_bit,
+                                          above_nonzero_bit,
+                                          meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 * 4 + sub_mb_cat * 8);*/
+          bool is_8x8 = sub_mb_size > 16;
           auto *e = &queue_estimators->at(i, serialized_so_far,
                                           (frames[!cur_frame].meta_at(
                                               mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
                                           left_nonzero_bit,
                                           above_nonzero_bit,
-                                          meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 * 4 + sub_mb_cat * 8);
+                                          sub_mb_is_dc + 2 * sub_mb_chroma422 + 4 * is_8x8,
+                                          sub_mb_cat);
+          /*auto *e = &queue_estimators->at(nonzero_bits[i], 0,
+                                          0,
+                                          0,
+                                          0,
+                                          0);*/
           put_or_get(e, &nonzero_bits[i]);
           if (nonzero_bits[i]) {
             serialized_so_far |= cur_bit;
@@ -426,7 +440,7 @@ class h264_model {
         }
       }
       BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
-      meta.is_8x8 = meta.is_8x8 || (sub_mb_size > 32); // 8x8 will have DC be 2x2
+      meta.is_8x8 = /*meta.is_8x8 ||*/ (sub_mb_size > 32); // 8x8 will have DC be 2x2
       meta.coded = true;
       assert(meta.num_nonzeros[mb_coord.scan8_index] == 0 || meta.num_nonzeros[mb_coord.scan8_index] == num_nonzeros);
       meta.num_nonzeros[mb_coord.scan8_index] = num_nonzeros;
@@ -515,11 +529,17 @@ class h264_model {
   }
 
   void update_state(int symbol, int context) {
-    auto *e = get_estimator(context);
+    auto *e = get_estimator(context, symbol);
     update_state_for_model_key(symbol, e);
   }
 
   void update_state_for_model_key(int symbol, estimator* e) {
+    if (coding_type == PIP_SIGNIFICANCE_MAP) {
+      //int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
+      /*if (COUNT_TOTAL_SYMBOLS < 2184)
+        fprintf(LOG_OUT, "%d: %d %d %d %d %d\n", COUNT_TOTAL_SYMBOLS++, symbol, nonzeros_observed, num_nonzeros, e->pos, e->neg);*/
+    }
+
     if (coding_type == PIP_SIGNIFICANCE_EOB) {
       int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
       assert(symbol == (num_nonzeros == nonzeros_observed));
@@ -573,7 +593,7 @@ class h264_model {
     }
   }
 
-  estimator* get_estimator(int context) {
+  estimator* get_estimator(int context, int symbol) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_MAP: {
         static const uint8_t sig_coeff_flag_offset_8x8[2][63] = {
@@ -655,8 +675,21 @@ class h264_model {
             if (fetch(false, true, neighbor_left_coord, &tmp)) {
               coeff_neighbor_left = !!tmp;
             } else {
-              coeff_neighbor_left = 2;
+              coeff_neighbor_left = 3;
             }
+
+            /*if (COUNT_TOTAL_SYMBOLS == 335) {
+              fprintf(stderr, "%d %d %d %d\n",
+                      mb_coord.mb_x, mb_coord.mb_y,
+                      mb_coord.scan8_index, mb_coord.zigzag_index);
+              fprintf(stderr, "%d %d %d %d\n",
+                      neighbor_left_coord.mb_x, neighbor_left_coord.mb_y,
+                      neighbor_left_coord.scan8_index, neighbor_left_coord.zigzag_index);
+              fprintf(stderr, "  %d %d %d\n",
+                      cur_frame,
+                      sub_mb_size,
+                      frames[cur_frame].meta_at(neighbor_left_coord.mb_x, neighbor_left_coord.mb_y).coded);
+              fprintf(stderr, "%d\n\n", coeff_neighbor_left);*/
           } else {
           }
         }
@@ -667,19 +700,22 @@ class h264_model {
             if (fetch(false, true, neighbor_above_coord, &tmp)) {
               coeff_neighbor_above = !!tmp;
             } else {
-              coeff_neighbor_above = 2;
+              coeff_neighbor_above = 3;
             }
           } else {
           }
         }
 
+        int coeff_prev = 3;
         // FIXME: why doesn't this prior help at all
         {
           int16_t output = 0;
           if (fetch(true, true, mb_coord, &output)) {
             if (do_print) LOG_NEIGHBORS("%d] ", output);
+            coeff_prev = !!output;
           } else {
             if (do_print) LOG_NEIGHBORS("x] ");
+            coeff_prev = 2;
           }
         }
         //const BlockMeta &meta = frames[!cur_frame].meta_at(mb_x, mb_y);
@@ -688,11 +724,17 @@ class h264_model {
         (void) neighbor_left;
         (void) coeff_neighbor_above;
         (void) coeff_neighbor_left;//haven't found a good way to utilize these priors to make the results better
+        bool is_8x8 = sub_mb_size > 16;
         return &significance_estimator->at(nonzeros_observed,
                                            num_nonzeros,
                                            sub_mb_is_dc + zigzag_offset * 2,
                                            sub_mb_cat,
-                                           coeff_neighbor_above, coeff_neighbor_left);
+                                           is_8x8, 0, 0);
+        return &significance_estimator->at(nonzeros_observed,
+                                           num_nonzeros,
+                                           sub_mb_is_dc + zigzag_offset * 2,
+                                           sub_mb_cat,
+                                           coeff_neighbor_above, coeff_neighbor_left, 0);
       }
       // FIXME: why doesn't this prior help at all
       case PIP_SIGNIFICANCE_EOB:

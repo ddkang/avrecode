@@ -19,7 +19,7 @@ extern "C" {
 
 // CABAC blocks smaller than this will be skipped.
 const int SURROGATE_MARKER_BYTES = 8;
-#define DO_NEIGHBOR_LOGGING
+// #define DO_NEIGHBOR_LOGGING
 #ifdef DO_NEIGHBOR_LOGGING
 #define LOG_NEIGHBORS printf
 #else
@@ -240,3 +240,5 @@ int av_check(int return_value, int expected_error = 0, const std::string& messag
 bool av_check(int return_value, const std::string& message = "") {
   return av_check(return_value, 0, message);
 }
+
+static int NUM_2X2 = 0, NUM_4X4 = 0, NUM_8X8 = 0, TOTAL_NUM = 0;

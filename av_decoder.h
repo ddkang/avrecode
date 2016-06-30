@@ -135,6 +135,18 @@ class av_decoder {
       self->sub_mb_size = max_coeff;
       self->sub_mb_is_dc = is_dc;
       self->sub_mb_chroma422 = chroma422;
+
+      TOTAL_NUM++;
+      if (max_coeff == 4)
+        NUM_2X2++;
+      else if (max_coeff == 16 || max_coeff == 15)
+        NUM_4X4++;
+      else if (max_coeff == 64)
+        NUM_8X8++;
+      else {
+        fprintf(stderr, "%d\n", max_coeff);
+        assert(false);
+      }
     }
     static void end_sub_mb(void *opaque, int cat, int scan8index, int max_coeff, int is_dc, int chroma422) {
       auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();

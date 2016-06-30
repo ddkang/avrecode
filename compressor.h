@@ -8,6 +8,8 @@ extern "C" {
 #include "libavutil/file.h"
 }
 
+#include <stdio.h>
+
 #include "arithmetic_code.h"
 #include "cabac_code.h"
 #include "recode.pb.h"
@@ -23,6 +25,8 @@ class compressor {
  public:
   compressor(const std::string &input_filename, std::ostream &out_stream)
       : input_filename(input_filename), out_stream(out_stream) {
+    COUNT_TOTAL_SYMBOLS = 0;
+    LOG_OUT = fopen("comp.log", "wb");
     if (av_file_map(input_filename.c_str(), &original_bytes, &original_size, 0, NULL) < 0) {
       throw std::invalid_argument("Failed to open file: " + input_filename);
     }
@@ -42,6 +46,8 @@ class compressor {
     out.add_block()->set_literal(
         &original_bytes[prev_coded_block_end], original_size - prev_coded_block_end);
     out_stream << out.SerializeAsString();
+    fclose(LOG_OUT);
+    fprintf(stderr, "%d %d %d %d\n", TOTAL_NUM, NUM_2X2, NUM_4X4, NUM_8X8);
   }
 
   int read_packet(uint8_t *buffer_out, int size) {

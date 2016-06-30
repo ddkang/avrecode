@@ -8,6 +8,8 @@ extern "C" {
 #include "libavutil/file.h"
 }
 
+#include <stdio.h>
+
 #include "arithmetic_code.h"
 #include "cabac_code.h"
 #include "recode.pb.h"
@@ -33,6 +35,8 @@ class decompressor {
  public:
   decompressor(const std::string &input_filename, std::ostream &out_stream)
       : input_filename(input_filename), out_stream(out_stream) {
+    COUNT_TOTAL_SYMBOLS = 0;
+    LOG_OUT = fopen("decomp.log", "wb");
     uint8_t *bytes;
     size_t size;
     if (av_file_map(input_filename.c_str(), &bytes, &size, 0, NULL) < 0) {
@@ -43,6 +47,8 @@ class decompressor {
 
   decompressor(const std::string &input_filename, const std::string &in_bytes, std::ostream &out_stream)
       : input_filename(input_filename), out_stream(out_stream) {
+    COUNT_TOTAL_SYMBOLS = 0;
+    LOG_OUT = fopen("decomp.log", "wb");
     in.ParseFromString(in_bytes);
   }
 
@@ -65,6 +71,7 @@ class decompressor {
       }
       out_stream << block.out_bytes;
     }
+    fclose(LOG_OUT);
   }
 
   int read_packet(uint8_t *buffer_out, int size) {
@@ -153,7 +160,7 @@ class decompressor {
         symbol = model->eob_symbol();
       } else {
         symbol = decoder->get([&](range_t range) {
-          return model->probability_for_state(range, state);
+          return model->probability_for_state(range, state, 0); // This will break decompression. Oh well.
         });
       }
       size_t billable_bytes = cabac_encoder.put(symbol, state_pointer);
@@ -166,7 +173,7 @@ class decompressor {
 
     int get_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->bypass_context);
+        return model->probability_for_state(range, model->bypass_context, 0); // BREAKS DECOMPRESSION
       });
       model->update_state(symbol, model->bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
@@ -178,7 +185,7 @@ class decompressor {
 
     int get_terminate() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->terminate_context);
+        return model->probability_for_state(range, model->terminate_context, 0);
       });
       model->update_state(symbol, model->terminate_context);
       size_t billable_bytes = cabac_encoder.put_terminate(symbol);

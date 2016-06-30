@@ -30,7 +30,7 @@ class h264_symbol {
     bool print_priors = in_significance_map && block_of_interest;
     if (model->coding_type != PIP_SIGNIFICANCE_EOB) {
       size_t billable_bytes = encoder.put(symbol, [&](range_t range) {
-        return model->probability_for_state(range, state);
+        return model->probability_for_state(range, state, symbol);
       });
       if (billable_bytes) {
         model->billable_bytes(billable_bytes);
