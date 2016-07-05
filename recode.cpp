@@ -51,10 +51,12 @@ int make_sure_reverse_scan8 = test_reverse_scan8();
 int roundtrip(const std::string &input_filename, std::ostream *out) {
   std::stringstream original, compressed, decompressed;
   original << std::ifstream(input_filename).rdbuf();
-  compressor c(input_filename, compressed);
-  c.run();
-  decompressor d(input_filename, compressed.str(), decompressed);
-  d.run();
+  compressor *c = new compressor(input_filename, compressed);
+  c->run();
+  delete c;
+  decompressor *d = new decompressor(input_filename, compressed.str(), decompressed);
+  d->run();
+  delete d;
 
   if (original.str() == decompressed.str()) {
     if (out) {
