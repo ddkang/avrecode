@@ -1,57 +1,64 @@
+#include "recode.h"
+
 #pragma once
+
+
+struct CoordSub {
+  int mb;
+  int scan8_index;
+};
+
+bool get_neighbor_sub_mb_4x4(CoordSub  inp, CoordSub *out,
+                             int left_shift, int above_shift) {
+  int mb = inp.mb;
+  int scan8_index = inp.scan8_index;
+  out->mb = inp.mb;
+  out->scan8_index = inp.scan8_index;
+  if (scan8_index >= 16 * 3) {
+    if (mb > 0) {
+      out->mb -= 1;
+      return true;
+    }
+    return false;
+  }
+  int scan8 = scan_8[scan8_index];
+  auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
+  bool neighbor_in = (left_shift == 0) ? neighbor.neighbor_up : neighbor.neighbor_left;
+  if (neighbor_in) {
+    if (mb == 0) {
+      return false;
+    } else {
+      --mb;
+    }
+  }
+  out->scan8_index = neighbor.scan8_index;
+  out->mb = mb;
+  return true;
+}
 
 bool get_neighbor_sub_mb(bool above, int sub_mb_size,
                          CoefficientCoord input,
                          CoefficientCoord *output) {
-  int mb_x = input.mb_x;
-  int mb_y = input.mb_y;
-  int scan8_index = input.scan8_index;
-  output->scan8_index = scan8_index;
-  output->mb_x = mb_x;
-  output->mb_y = mb_y;
-  output->zigzag_index = input.zigzag_index;
-  if (scan8_index >= 16 * 3) {
-    if (above) {
-      if (mb_y > 0) {
-        output->mb_y -= 1;
-        return true;
-      }
-      return false;
-    } else {
-      if (mb_x > 0) {
-        output->mb_x -= 1;
-        return true;
-      }
-      return false;
-    }
-  }
-  int scan8 = scan_8[scan8_index];
   int left_shift = (above ? 0 : -1);
   int above_shift = (above ? -1 : 0);
-  auto neighbor = reverse_scan_8[(scan8 >> 3) + above_shift][(scan8 & 7) + left_shift];
-  if (neighbor.neighbor_left) {
-    if (mb_x == 0) {
-      return false;
-    } else {
-      --mb_x;
-    }
-  }
-  if (neighbor.neighbor_up) {
-    if (mb_y == 0) {
-      return false;
-    } else {
-      --mb_y;
-    }
-  }
-  output->scan8_index = neighbor.scan8_index;
+
+  int inp_mb = above ? input.mb_y : input.mb_x;
+  CoordSub inp = {inp_mb, input.scan8_index};
+  CoordSub out = {0, 0};
+
+  bool result = get_neighbor_sub_mb_4x4(inp, &out, left_shift, above_shift);
+
+  output->mb_x = above ? input.mb_x : out.mb;
+  output->mb_y = above ? out.mb : input.mb_y;
+  output->scan8_index = out.scan8_index;
+  output->zigzag_index = input.zigzag_index;
+
   if (sub_mb_size >= 32) {
     output->scan8_index /= 4;
     output->scan8_index *= 4; // round down to the nearest multiple of 4
   }
-  output->zigzag_index = input.zigzag_index;
-  output->mb_x = mb_x;
-  output->mb_y = mb_y;
-  return true;
+
+  return result;
 }
 
 
