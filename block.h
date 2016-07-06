@@ -2,7 +2,7 @@
 #define _BLOCK_H_
 
 struct Block {
-    uint16_t residual[(3 * (16 + 1)) * 16];
+    int16_t residual[(3 * (16 + 1)) * 16];
     int16_t mv_x[4][4];
     int16_t mv_y[4][4];
 };

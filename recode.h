@@ -19,7 +19,7 @@ extern "C" {
 
 // CABAC blocks smaller than this will be skipped.
 const int SURROGATE_MARKER_BYTES = 8;
-// #define DO_NEIGHBOR_LOGGING
+#define DO_NEIGHBOR_LOGGING
 #ifdef DO_NEIGHBOR_LOGGING
 #define LOG_NEIGHBORS printf
 #else

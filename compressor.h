@@ -160,6 +160,7 @@ class compressor {
         pop_queueing_symbols(ct);
         model->coding_type = PIP_UNKNOWN;
       }
+      // LOG_NEIGHBORS("\n");
     }
 
    private:

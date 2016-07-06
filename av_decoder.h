@@ -125,8 +125,7 @@ class av_decoder {
       auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
       self->mb_coord.mb_x = x;
       self->mb_coord.mb_y = y;
-      // LOG_NEIGHBORS("%d %d\n", x, y);
-      LOG_NEIGHBORS("%d\n", x + y * 20); // FIXME: lawl
+      LOG_NEIGHBORS("%d %d\n", x, y);
     }
     static void begin_sub_mb(void *opaque, int cat, int scan8index, int max_coeff, int is_dc, int chroma422) {
       auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
@@ -171,7 +170,7 @@ class av_decoder {
     static void end_coding_type(void *opaque, CodingType ct) {
       auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
       assert(cabac_contexts.size() == 1);
-      typename Driver::cabac_decoder*self = cabac_contexts.begin()->second.get();
+      typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
       self->end_coding_type(ct);
     }
   };

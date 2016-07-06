@@ -10,8 +10,6 @@ class FrameBuffer {
     BlockMeta *meta_;
     uint8_t *storage_;
     uint8_t *meta_storage_;
-    uint8_t *mb_types_;
-    uint16_t *cbp_;
     int frame_num_;
     FrameBuffer(const FrameBuffer &other) = delete;
     FrameBuffer& operator=(const FrameBuffer&other) = delete;

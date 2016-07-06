@@ -54,6 +54,22 @@ bool get_neighbor_sub_mb(bool above, int sub_mb_size,
   output->zigzag_index = input.zigzag_index;
 
   if (sub_mb_size >= 32) {
+    switch (input.scan8_index) {
+      case 0:
+        output->scan8_index = 0;
+        break;
+      case 4:
+        output->scan8_index = above ? 4 : 0;
+        break;
+      case 8:
+        output->scan8_index = above ? 0 : 8;
+        break;
+      case 12:
+        output->scan8_index = above ? 4 : 8;
+        break;
+      default:
+        assert(false);
+    }
     output->scan8_index /= 4;
     output->scan8_index *= 4; // round down to the nearest multiple of 4
   }
