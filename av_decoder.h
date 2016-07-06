@@ -173,6 +173,12 @@ class av_decoder {
       typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
       self->end_coding_type(ct);
     }
+    static void copy_coefficients(void *opaque, int16_t *block, int max_coeff) {
+      auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
+      assert(cabac_contexts.size() == 1);
+      typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
+      self->copy_coefficients(block, max_coeff);
+    }
   };
   Driver *driver;
   AVFormatContext *format_ctx;
@@ -190,6 +196,7 @@ class av_decoder {
       model_hooks::end_sub_mb,
       model_hooks::begin_coding_type,
       model_hooks::end_coding_type,
+      model_hooks::copy_coefficients,
     },
   };
   std::map<CABACContext*, std::unique_ptr<typename Driver::cabac_decoder>> cabac_contexts;

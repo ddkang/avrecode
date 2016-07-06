@@ -163,6 +163,13 @@ class compressor {
       // LOG_NEIGHBORS("\n");
     }
 
+    void copy_coefficients(int16_t *block, int max_coeff) {
+      if (!model) {
+        return;
+      }
+      model->copy_coefficients(block, max_coeff);
+    }
+
    private:
     void push_queueing_symbols(CodingType ct) {
       // Does not currently support nested queues.

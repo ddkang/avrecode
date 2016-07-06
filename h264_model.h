@@ -382,6 +382,12 @@ class h264_model {
     update_state_tracking(symbol);
   }
 
+  void copy_coefficients(int16_t *block, int max_coeff) {
+    memcpy(&frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16],
+           block,
+           max_coeff * sizeof(int16_t));
+  }
+
   static constexpr int bypass_context = -1, terminate_context = -2;
   static constexpr int significance_context = -3, eob_context = -4;
   CoefficientCoord mb_coord;

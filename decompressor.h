@@ -226,6 +226,13 @@ class decompressor {
       model->end_coding_type(ct);
     }
 
+    void copy_coefficients(int16_t *block, int max_coeff) {
+      if (!model) {
+        return;
+      }
+      model->copy_coefficients(block, max_coeff);
+    }
+
    private:
     void finish() {
       // Omit trailing byte if it's only a stop bit.
