@@ -47,7 +47,7 @@ class compressor {
         &original_bytes[prev_coded_block_end], original_size - prev_coded_block_end);
     out_stream << out.SerializeAsString();
     fclose(LOG_OUT);
-    fprintf(stderr, "%d %d %d %d\n", TOTAL_NUM, NUM_2X2, NUM_4X4, NUM_8X8);
+    fprintf(stderr, "%d %d %d %d %d\n", TOTAL_NUM, NUM_2X2, NUM_4X4, NUM_WEIRD, NUM_8X8);
   }
 
   int read_packet(uint8_t *buffer_out, int size) {

@@ -86,7 +86,7 @@ bool get_neighbor(bool above, int sub_mb_size,
   int scan8_index = input.scan8_index;
   int zigzag_index = input.zigzag_index;
   int dimension = 2;
-  if (sub_mb_size > 15) {
+  if (sub_mb_size >= 15) {
     dimension = 4;
   }
   if (sub_mb_size > 32) {

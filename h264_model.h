@@ -8,6 +8,8 @@ extern "C" {
 #include "libavutil/file.h"
 }
 
+#include <algorithm>
+
 #include "arithmetic_code.h"
 #include "cabac_code.h"
 #include "recode.pb.h"
@@ -30,7 +32,7 @@ class h264_model {
   };
 
  private:
-  typedef Sirikata::Array7d<estimator, 64, 64, 64*2, 14, 4, 4, 1> sig_array;
+  typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 1, 1, 1> sig_array;
   typedef Sirikata::Array7d<estimator, 6, 32, 2, 3, 3, 2 * 2, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
@@ -104,7 +106,7 @@ class h264_model {
     }
     *output = frames[previous ? !cur_frame : cur_frame].
         at(coord.mb_x, coord.mb_y).residual[coord.scan8_index * 16 +
-                                            coord.zigzag_index];
+                                            coord.zigzag_index + (sub_mb_size == 15)];
     return true;
   }
 
@@ -246,7 +248,7 @@ class h264_model {
         meta.num_nonzeros[mb_coord.scan8_index] |= nonzero_bits[i] << i;
       }
       if (block_of_interest) {
-        LOG_NEIGHBORS("} %d>\n", meta.num_nonzeros[mb_coord.scan8_index]);
+        LOG_NEIGHBORS("} %d> \n", meta.num_nonzeros[mb_coord.scan8_index]);
       }
       coding_type = last;
     }
@@ -255,7 +257,7 @@ class h264_model {
   void end_coding_type(CodingType ct) {
     if (ct == PIP_SIGNIFICANCE_MAP) {
       assert(coding_type == PIP_UNREACHABLE
-             || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index == 0));
+             || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index <= 1));
       uint8_t num_nonzeros = 0;
       for (int i = 0; i < sub_mb_size; ++i) {
         int16_t res = frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16 + i];
@@ -269,6 +271,7 @@ class h264_model {
       meta.coded = true;
       assert(meta.num_nonzeros[mb_coord.scan8_index] == 0 || meta.num_nonzeros[mb_coord.scan8_index] == num_nonzeros);
       meta.num_nonzeros[mb_coord.scan8_index] = num_nonzeros;
+      meta.sub_mb_size = sub_mb_size;
     }
     coding_type = PIP_UNKNOWN;
   }
@@ -283,7 +286,7 @@ class h264_model {
       }
         assert(!zz_index);
         nonzeros_observed = 0;
-        if (sub_mb_is_dc) {
+        if (sub_mb_size == 15) {
           mb_coord.zigzag_index = 0;
         } else {
           mb_coord.zigzag_index = 0;
@@ -383,9 +386,42 @@ class h264_model {
   }
 
   void copy_coefficients(int16_t *block, int max_coeff) {
-    memcpy(&frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16],
+    int copy_size = max_coeff + (max_coeff == 15);
+    if (max_coeff == 4) copy_size = 64;  // TODO: ffmpeg does something weird with chroma DCs
+    memcpy(&frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
+              residual[mb_coord.scan8_index * 16],
            block,
-           max_coeff * sizeof(int16_t));
+           copy_size * sizeof(int16_t));
+  }
+
+  void print_coeffs() {
+    int16_t *block = &frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
+        residual[mb_coord.scan8_index * 16];
+
+    if (/*sub_mb_size <= 4 ||*/ frames[cur_frame].get_frame_num() > 1) return;
+    /*const uint8_t *unscan = (sub_mb_size > 4) ? ffmpeg_j_to_ind : zigzag4;
+    unscan += (sub_mb_size == 15);
+    for (int j = 0; j < sub_mb_size; j++) {
+      int ind = unscan[j];
+      if (block[j]) printf("%d,%d,%d,%d,%d,%d,%d\n",
+                           frames[cur_frame].get_frame_num(),
+                           mb_coord.mb_x, mb_coord.mb_y, mb_coord.scan8_index,
+                           ind, j, block[j]);
+    }*/
+    // I suspect ffmpeg reserves space for 444 and only uses these for 420
+    static const uint8_t chroma_scan[4] = {0, 16, 32, 48};
+    const uint8_t *scan = (sub_mb_size > 4) ? ffmpeg_ind_to_j : chroma_scan;
+    scan += (sub_mb_size == 15);
+
+    if (sub_mb_size == 64) scan = ffmpeg8x8_ind_to_j;
+
+    for (int ind = sub_mb_size-1 + (sub_mb_size == 15); ind >= 0; ind--) {
+      int j = scan[ind];
+      if (block[j]) printf("%d,%d,%d,%d,%d,%d,%d,%d\n",
+                           frames[cur_frame].get_frame_num(),
+                           mb_coord.mb_x, mb_coord.mb_y, mb_coord.scan8_index,
+                           ind, j, block[j], sub_mb_size);
+    }
   }
 
   static constexpr int bypass_context = -1, terminate_context = -2;
@@ -453,15 +489,18 @@ class h264_model {
         int neighbor_left = 0;
         int coeff_neighbor_above = 0;
         int coeff_neighbor_left = 0;
-        /*if (do_print) {
+        do_print = false;
+        if (do_print) {
           LOG_NEIGHBORS("[");
         }
         {
           CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
           if (get_neighbor(false, sub_mb_size, mb_coord, &neighbor_left_coord)) {
             int16_t tmp = 0;
-            if (fetch(false, true, neighbor_left_coord, &tmp)) {
-              neighbor_left = 2 + !!tmp;
+            const bool matched =
+                frames[cur_frame].meta_at(neighbor_left_coord.mb_x, neighbor_left_coord.mb_y).sub_mb_size == sub_mb_size;
+            if (fetch(false, true, neighbor_left_coord, &tmp) && matched) {
+              neighbor_left = 4 + std::max(std::min(tmp, (int16_t) 2), (int16_t) -2);
               if (do_print) {
                 LOG_NEIGHBORS("%d,", tmp);
               }
@@ -471,13 +510,25 @@ class h264_model {
                 LOG_NEIGHBORS("_,");
               }
             }
+
+            /*flip = !flip;
+            if (TOTAL_NUM < 10000 && flip) {
+              LOG_NEIGHBORS("%d %d %d\n", sub_mb_is_dc, sub_mb_cat, sub_mb_size);
+              LOG_NEIGHBORS("%d %d %d %d\n",
+                            mb_coord.mb_x, mb_coord.mb_y,
+                            mb_coord.scan8_index, mb_coord.zigzag_index);
+              LOG_NEIGHBORS("%d %d %d %d\n\n",
+                            neighbor_left_coord.mb_x, neighbor_left_coord.mb_y,
+                            neighbor_left_coord.scan8_index, neighbor_left_coord.zigzag_index);
+            }*/
+
           } else {
             if (do_print) {
               LOG_NEIGHBORS("x,");
             }
           }
         }
-        {
+        /*{
           CoefficientCoord neighbor_above_coord = {0, 0, 0, 0};
           if (get_neighbor(true, sub_mb_size, mb_coord, &neighbor_above_coord)) {
             int16_t tmp = 0;
@@ -497,7 +548,6 @@ class h264_model {
               LOG_NEIGHBORS("x,");
             }
           }
-
         }
         {
           CoefficientCoord neighbor_left_coord = {0, 0, 0, 0};
@@ -522,39 +572,37 @@ class h264_model {
             }
           } else {
           }
-        }
+        }*/
 
-        int coeff_prev = 3;
+        int coeff_prev = 0;
         // FIXME: why doesn't this prior help at all
         {
           int16_t output = 0;
           if (fetch(true, true, mb_coord, &output)) {
             if (do_print) LOG_NEIGHBORS("%d] ", output);
-            coeff_prev = !!output;
+            coeff_prev = 4 + std::max(std::min(output, (int16_t) 3), (int16_t) -3);
           } else {
             if (do_print) LOG_NEIGHBORS("x] ");
-            coeff_prev = 2;
+            coeff_prev = 1;
           }
-        }*/
+        }
+        // if (coeff_prev > 1) fprintf(stdout, "coeff: %d\n", coeff_prev);
         int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
         /*fprintf(LOG_OUT, "%d,%d,%d,%d,%d,%d,%d,%d\n",
                 symbol,
                 nonzeros_observed, num_nonzeros - nonzeros_observed,
                 sub_mb_is_dc, zigzag_offset, sub_mb_cat, neighbor_above, neighbor_left);*/
 
-        coeff_neighbor_above = std::min(coeff_neighbor_above, 10);
-        coeff_neighbor_left = std::min(coeff_neighbor_left, 10);
-        auto *e = &significance_estimator->at(nonzeros_observed,
-                                              num_nonzeros,
-                                              sub_mb_is_dc + zigzag_offset * 2,
+        auto *e = &significance_estimator->at(num_nonzeros - nonzeros_observed,
+                                              zigzag_offset,
                                               sub_mb_cat,
-                                              neighbor_above, 0, 0);
+                                              neighbor_left, 0, 0, 0);
         // e = &cabac_estimator[context];
-        if (++COUNT_TOTAL_SYMBOLS < 1000000) {
+        if (++COUNT_TOTAL_SYMBOLS < 10000000) {
           if (e->pos > e->neg == symbol) {
             NUM_CORRECT++;
           }
-        } else if (COUNT_TOTAL_SYMBOLS == 1000000) {
+        } else if (COUNT_TOTAL_SYMBOLS == 10000000) {
           fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
         }
         return e;/*&significance_estimator->at(nonzeros_observed,

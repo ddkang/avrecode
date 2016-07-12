@@ -35,6 +35,9 @@ class FrameBuffer {
     void set_frame_num(int frame_num) {
         frame_num_ = frame_num;
     }
+    int get_frame_num() {
+        return frame_num_;
+    }
     bool is_same_frame(int frame_num) const {
         return frame_num_ == frame_num && width_ != 0 && height_ != 0;
     }

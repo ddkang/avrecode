@@ -125,7 +125,7 @@ class av_decoder {
       auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
       self->mb_coord.mb_x = x;
       self->mb_coord.mb_y = y;
-      LOG_NEIGHBORS("%d %d\n", x, y);
+      // LOG_NEIGHBORS("%d %d\n", x, y);
     }
     static void begin_sub_mb(void *opaque, int cat, int scan8index, int max_coeff, int is_dc, int chroma422) {
       auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
@@ -138,6 +138,8 @@ class av_decoder {
       TOTAL_NUM++;
       if (max_coeff == 4)
         NUM_2X2++;
+      else if (max_coeff == 15)
+        NUM_WEIRD++;
       else if (max_coeff == 16 || max_coeff == 15)
         NUM_4X4++;
       else if (max_coeff == 64)
@@ -154,6 +156,7 @@ class av_decoder {
       assert(self->sub_mb_size == max_coeff);
       assert(self->sub_mb_is_dc == is_dc);
       assert(self->sub_mb_chroma422 == chroma422);
+      self->print_coeffs();
       self->sub_mb_cat = -1;
       self->mb_coord.scan8_index = -1;
       self->sub_mb_size = -1;

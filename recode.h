@@ -182,6 +182,18 @@ constexpr uint8_t unzigzag16[16] = {
     9, 12, 13, 10,
     7, 11, 14, 15
 };
+constexpr uint8_t ffmpeg_j_to_ind[16] = {
+    0,  2,  3,  9,
+    1,  4,  8, 10,
+    5,  7, 11, 14,
+    6, 12, 13, 15,
+};
+constexpr uint8_t ffmpeg_ind_to_j[16] = {
+    0,   4,  1,  2,
+    5,   8, 12,  9,
+    6,   3,  7, 10,
+    13, 14, 11, 15,
+};
 constexpr uint8_t zigzag16[16] = {
     0,  1,  5,  6,
     2,  4,  7, 12,
@@ -198,7 +210,6 @@ constexpr uint8_t unzigzag64[64] = {
     58, 59, 52, 45, 38, 31, 39, 46,
     53, 60, 61, 54, 47, 55, 62, 63
 };
-
 constexpr uint8_t zigzag64[64] = {
     0,  1,  5,  6,  14, 15, 27, 28,
     2,  4,  7,  13, 16, 26, 29, 42,
@@ -208,6 +219,16 @@ constexpr uint8_t zigzag64[64] = {
     20, 22, 33, 38, 46, 51, 55, 60,
     21, 34, 37, 47, 50, 56, 59, 61,
     35, 36, 48, 49, 57, 58, 62, 63
+};
+constexpr uint8_t ffmpeg8x8_ind_to_j[64] = {
+    0,  8,  1,  2,  9, 16, 24, 17,
+    10,  3,  4, 11, 18, 25, 32, 40,
+    33, 26, 19, 12,  5,  6, 13, 20,
+    27, 34, 41, 48, 56, 49, 42, 35,
+    28, 21, 14,  7, 15, 22, 29, 36,
+    43, 50, 57, 58, 51, 44, 37, 30,
+    23, 31, 38, 45, 52, 59, 60, 53,
+    46, 39, 47, 54, 61, 62, 55, 63,
 };
 
 
@@ -241,4 +262,6 @@ bool av_check(int return_value, const std::string& message = "") {
   return av_check(return_value, 0, message);
 }
 
-static int NUM_2X2 = 0, NUM_4X4 = 0, NUM_8X8 = 0, TOTAL_NUM = 0;
+static int NUM_2X2 = 0, NUM_4X4 = 0, NUM_8X8 = 0;
+static int NUM_WEIRD = 0, TOTAL_NUM = 0;
+static bool flip = true;
