@@ -308,6 +308,16 @@ class h264_model {
   void update_state_tracking(int symbol) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
+      case PIP_INTRA_MB_TYPE:
+      case PIP_INTRA4X4_PRED_MODE:
+      case PIP_MB_CBP_LUMA:
+      case PIP_MB_MVD:
+      case PIP_MB_SKIP_FLAG:
+      case PIP_MB_CHROMA_PRE_MODE:
+      case PIP_MB_CBP_CHROMA:
+      case PIP_P_MB_SUB_TYPE:
+      case PIP_B_MB_SUB_TYPE:
+      case PIP_MB_REF:
         break;
       case PIP_SIGNIFICANCE_MAP:
         frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
@@ -395,10 +405,12 @@ class h264_model {
   }
 
   void print_coeffs() {
+    return;
+
     int16_t *block = &frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
         residual[mb_coord.scan8_index * 16];
 
-    if (/*sub_mb_size <= 4 ||*/ frames[cur_frame].get_frame_num() > 1) return;
+    if (frames[cur_frame].get_frame_num() > 1) return;
     /*const uint8_t *unscan = (sub_mb_size > 4) ? ffmpeg_j_to_ind : zigzag4;
     unscan += (sub_mb_size == 15);
     for (int j = 0; j < sub_mb_size; j++) {
@@ -620,9 +632,20 @@ class h264_model {
       case PIP_SIGNIFICANCE_EOB:
         return &eob_estimator[eob_symbol()];
       case PIP_SIGNIFICANCE_NZ:
-      case PIP_UNKNOWN:
       case PIP_UNREACHABLE:
       case PIP_RESIDUALS:
+      case PIP_INTRA_MB_TYPE:
+      case PIP_INTRA4X4_PRED_MODE:
+      case PIP_MB_CBP_LUMA:
+      case PIP_MB_MVD:
+      case PIP_MB_SKIP_FLAG:
+      case PIP_MB_CHROMA_PRE_MODE:
+      case PIP_MB_CBP_CHROMA:
+      case PIP_P_MB_SUB_TYPE:
+      case PIP_B_MB_SUB_TYPE:
+      case PIP_MB_REF:
+        return get_estimator_helper(context);
+      case PIP_UNKNOWN:
         return get_estimator_helper(context);
       default:
         break;
