@@ -35,15 +35,34 @@ class h264_model {
   typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 1, 1, 1> sig_array;
   typedef Sirikata::Array7d<estimator, 6, 32, 2, 3, 3, 2 * 2, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
+  std::unique_ptr<sig_array> significance_estimator;
+  std::unique_ptr<queue_array> queue_estimators;
+  estimator bypass_estimator;
+  estimator terminate_estimator;
+  estimator eob_estimator[2];
+  estimator cabac_estimator[1024]; // FIXME
 
  public:
-  CodingType coding_type = PIP_UNKNOWN;
+  static constexpr int bypass_context = -1, terminate_context = -2;
+  static constexpr int significance_context = -3, eob_context = -4;
+
   size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
   size_t cabac_bill[sizeof(billing_names) / sizeof(billing_names[0])];
+
+  // Global context
+  CodingType coding_type = PIP_UNKNOWN;
   FrameBuffer frames[2];
   int cur_frame = 0;
-  uint8_t STATE_FOR_NUM_NONZERO_BIT[6];
   bool do_print;
+  CoefficientCoord mb_coord;
+
+  // Significance map context variables
+  int nonzeros_observed = 0;
+  int sub_mb_cat = -1;
+  int sub_mb_size = -1;
+  int sub_mb_is_dc = 0;
+  int sub_mb_chroma422 = 0;
+
  public:
   h264_model() {
     reset();
@@ -94,7 +113,6 @@ class h264_model {
 
   void reset() {
     // reset should do nothing as we wish to remember what we've learned
-    memset(STATE_FOR_NUM_NONZERO_BIT, 0, sizeof(STATE_FOR_NUM_NONZERO_BIT));
   }
 
   bool fetch(bool previous, bool match_type, CoefficientCoord coord, int16_t *output) const {
@@ -436,23 +454,7 @@ class h264_model {
     }
   }
 
-  static constexpr int bypass_context = -1, terminate_context = -2;
-  static constexpr int significance_context = -3, eob_context = -4;
-  CoefficientCoord mb_coord;
-  int nonzeros_observed = 0;
-  int sub_mb_cat = -1;
-  int sub_mb_size = -1;
-  int sub_mb_is_dc = 0;
-  int sub_mb_chroma422 = 0;
  private:
-  std::unique_ptr<sig_array> significance_estimator;
-  std::unique_ptr<queue_array> queue_estimators;
-  estimator bypass_estimator;
-  estimator terminate_estimator;
-  estimator eob_estimator[2];
-  estimator cabac_estimator[1024]; // FIXME
-
-
   // TODO: DELETE THIS
   estimator* get_estimator_helper(int context) {
     switch (context) {
