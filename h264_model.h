@@ -41,6 +41,8 @@ class h264_model {
   estimator terminate_estimator;
   estimator eob_estimator[2];
   estimator intra4x4_pred_mode_estimator[4][2];
+  estimator mb_skip_estimator[3][3][3];
+  estimator mb_cbp_luma[17][17][4]; // Maybe one more dimension?
   estimator cabac_estimator[1024]; // FIXME
 
  public:
@@ -57,11 +59,17 @@ class h264_model {
   bool do_print;
   CoefficientCoord mb_coord;
 
+  // cbp luma context
+  int cbp_luma_bit_num = 0;
+  int cbp_luma_last = 0;
+  int cbp_luma_running = 0;
+
+  // intra4x4_pred_mode context
   int intra4x4_pred_mode_bit_num = 0;
   int intra4x4_pred_mode_last = 0;
   int intra4x4_pred_mode_running = 0;
 
-  // Significance map context variables
+  // Significance map context
   int nonzeros_observed = 0;
   int sub_mb_cat = -1;
   int sub_mb_size = -1;
@@ -303,6 +311,11 @@ class h264_model {
         BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
       }
         break;
+      case PIP_MB_CBP_LUMA: {
+        BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
+        meta.cbp_luma = cbp_luma_running;
+      }
+        break;
       default:
         break;
     }
@@ -330,6 +343,11 @@ class h264_model {
         intra4x4_pred_mode_bit_num = 0;
         intra4x4_pred_mode_last = 0;
         intra4x4_pred_mode_running = 0;
+      case PIP_MB_CBP_LUMA:
+        cbp_luma_bit_num = 0;
+        cbp_luma_last = 0;
+        cbp_luma_running = 0;
+        break;
       default:
         break;
     }
@@ -346,7 +364,6 @@ class h264_model {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
       case PIP_INTRA_MB_TYPE:
-      case PIP_MB_CBP_LUMA:
       case PIP_MB_MVD:
       case PIP_MB_SKIP_FLAG:
       case PIP_MB_CHROMA_PRE_MODE:
@@ -354,6 +371,11 @@ class h264_model {
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
+        break;
+      case PIP_MB_CBP_LUMA:
+        cbp_luma_last = symbol;
+        cbp_luma_running += symbol << cbp_luma_bit_num;
+        cbp_luma_bit_num++;
         break;
       case PIP_INTRA4X4_PRED_MODE:
         if (intra4x4_pred_mode_bit_num) {
@@ -661,13 +683,31 @@ class h264_model {
         return &eob_estimator[eob_symbol()];
       case PIP_INTRA4X4_PRED_MODE:
         return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num][intra4x4_pred_mode_last];
+      case PIP_MB_CBP_LUMA: {
+        int left = mb_coord.mb_x != 0;
+        if (left) left += frames[cur_frame].meta_at(mb_coord.mb_x - 1, mb_coord.mb_y).cbp_luma;
+        int top = mb_coord.mb_y != 0;
+        if (top) top += frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y - 1).cbp_luma;
+        int last = frames[cur_frame].get_frame_num() != 0;
+        if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).cbp_luma;
+        // losslessh264 uses the block type, which we do not currently track.
+        // return &mb_cbp_luma[0][cbp_luma_bit_num][cbp_luma_last];
+        return get_estimator_helper(context);
+      }
+      case PIP_MB_SKIP_FLAG: {
+        int left = mb_coord.mb_x != 0;
+        if (left) left += frames[cur_frame].meta_at(mb_coord.mb_x - 1, mb_coord.mb_y).coded;
+        int top = mb_coord.mb_y != 0;
+        if (top) top += frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y - 1).coded;
+        int last = frames[cur_frame].get_frame_num() != 0;
+        if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded;
+        return &mb_skip_estimator[left][top][last];
+      }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_RESIDUALS:
       case PIP_INTRA_MB_TYPE:
-      case PIP_MB_CBP_LUMA:
       case PIP_MB_MVD:
-      case PIP_MB_SKIP_FLAG:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:
       case PIP_P_MB_SUB_TYPE:
