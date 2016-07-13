@@ -427,7 +427,7 @@ class h264_model {
     int copy_size = max_coeff + (max_coeff == 15);
     if (max_coeff == 4) copy_size = 64;  // TODO: ffmpeg does something weird with chroma DCs
     memcpy(&frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
-              residual[mb_coord.scan8_index * 16],
+              coeffs[mb_coord.scan8_index * 16],
            block,
            copy_size * sizeof(int16_t));
   }
@@ -436,7 +436,7 @@ class h264_model {
     return;
 
     int16_t *block = &frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
-        residual[mb_coord.scan8_index * 16];
+        coeffs[mb_coord.scan8_index * 16];
 
     if (frames[cur_frame].get_frame_num() > 1) return;
     /*const uint8_t *unscan = (sub_mb_size > 4) ? ffmpeg_j_to_ind : zigzag4;
