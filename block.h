@@ -6,6 +6,7 @@ struct Block {
     int16_t residual[(3 * (16 + 1)) * 16];
 };
 struct BlockMeta {
+    uint8_t intra4x4_pred_mode[16];
     uint8_t sub_mb_size;
     bool is_8x8;
     bool coded;

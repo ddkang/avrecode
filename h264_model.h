@@ -59,6 +59,7 @@ class h264_model {
 
   int intra4x4_pred_mode_bit_num = 0;
   int intra4x4_pred_mode_last = 0;
+  int intra4x4_pred_mode_running = 0;
 
   // Significance map context variables
   int nonzeros_observed = 0;
@@ -277,23 +278,33 @@ class h264_model {
   }
 
   void end_coding_type(CodingType ct) {
-    if (ct == PIP_SIGNIFICANCE_MAP) {
-      assert(coding_type == PIP_UNREACHABLE
-             || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index <= 1));
-      uint8_t num_nonzeros = 0;
-      for (int i = 0; i < sub_mb_size; ++i) {
-        int16_t res = frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16 + i];
-        assert(res == 1 || res == 0);
-        if (res != 0) {
-          num_nonzeros += 1;
+    switch (ct) {
+      case PIP_SIGNIFICANCE_MAP: {
+        assert(coding_type == PIP_UNREACHABLE
+               || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index <= 1));
+        uint8_t num_nonzeros = 0;
+        for (int i = 0; i < sub_mb_size; ++i) {
+          int16_t res = frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16 + i];
+          assert(res == 1 || res == 0);
+          if (res != 0) {
+            num_nonzeros += 1;
+          }
         }
+        BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
+        meta.is_8x8 = /*meta.is_8x8 ||*/ (sub_mb_size > 32); // 8x8 will have DC be 2x2
+        meta.coded = true;
+        assert(meta.num_nonzeros[mb_coord.scan8_index] == 0 || meta.num_nonzeros[mb_coord.scan8_index] == num_nonzeros);
+        meta.num_nonzeros[mb_coord.scan8_index] = num_nonzeros;
+        meta.sub_mb_size = sub_mb_size;
       }
-      BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
-      meta.is_8x8 = /*meta.is_8x8 ||*/ (sub_mb_size > 32); // 8x8 will have DC be 2x2
-      meta.coded = true;
-      assert(meta.num_nonzeros[mb_coord.scan8_index] == 0 || meta.num_nonzeros[mb_coord.scan8_index] == num_nonzeros);
-      meta.num_nonzeros[mb_coord.scan8_index] = num_nonzeros;
-      meta.sub_mb_size = sub_mb_size;
+        break;
+
+      case PIP_INTRA4X4_PRED_MODE: {
+        BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
+      }
+        break;
+      default:
+        break;
     }
     coding_type = PIP_UNKNOWN;
   }
@@ -318,6 +329,7 @@ class h264_model {
       case PIP_INTRA4X4_PRED_MODE:
         intra4x4_pred_mode_bit_num = 0;
         intra4x4_pred_mode_last = 0;
+        intra4x4_pred_mode_running = 0;
       default:
         break;
     }
@@ -344,6 +356,10 @@ class h264_model {
       case PIP_MB_REF:
         break;
       case PIP_INTRA4X4_PRED_MODE:
+        if (intra4x4_pred_mode_bit_num) {
+          intra4x4_pred_mode_running <<= 1;
+          intra4x4_pred_mode_running |= symbol;
+        }
         intra4x4_pred_mode_bit_num++;
         intra4x4_pred_mode_last = symbol;
         break;
