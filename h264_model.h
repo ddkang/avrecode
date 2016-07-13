@@ -40,6 +40,7 @@ class h264_model {
   estimator bypass_estimator;
   estimator terminate_estimator;
   estimator eob_estimator[2];
+  estimator intra4x4_pred_mode_estimator[4][2];
   estimator cabac_estimator[1024]; // FIXME
 
  public:
@@ -55,6 +56,9 @@ class h264_model {
   int cur_frame = 0;
   bool do_print;
   CoefficientCoord mb_coord;
+
+  int intra4x4_pred_mode_bit_num = 0;
+  int intra4x4_pred_mode_last = 0;
 
   // Significance map context variables
   int nonzeros_observed = 0;
@@ -311,6 +315,9 @@ class h264_model {
         }
         begin_queueing = true;
         break;
+      case PIP_INTRA4X4_PRED_MODE:
+        intra4x4_pred_mode_bit_num = 0;
+        intra4x4_pred_mode_last = 0;
       default:
         break;
     }
@@ -327,7 +334,6 @@ class h264_model {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
       case PIP_INTRA_MB_TYPE:
-      case PIP_INTRA4X4_PRED_MODE:
       case PIP_MB_CBP_LUMA:
       case PIP_MB_MVD:
       case PIP_MB_SKIP_FLAG:
@@ -336,6 +342,10 @@ class h264_model {
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
+        break;
+      case PIP_INTRA4X4_PRED_MODE:
+        intra4x4_pred_mode_bit_num++;
+        intra4x4_pred_mode_last = symbol;
         break;
       case PIP_SIGNIFICANCE_MAP:
         frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).
@@ -610,7 +620,7 @@ class h264_model {
         auto *e = &significance_estimator->at(num_nonzeros - nonzeros_observed,
                                               zigzag_offset,
                                               sub_mb_cat,
-                                              neighbor_left, 0, 0, 0);
+                                              0, 0, 0, 0);
         // e = &cabac_estimator[context];
         if (++COUNT_TOTAL_SYMBOLS < 10000000) {
           if (e->pos > e->neg == symbol) {
@@ -633,11 +643,12 @@ class h264_model {
       // FIXME: why doesn't this prior help at all
       case PIP_SIGNIFICANCE_EOB:
         return &eob_estimator[eob_symbol()];
+      case PIP_INTRA4X4_PRED_MODE:
+        return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num][intra4x4_pred_mode_last];
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_RESIDUALS:
       case PIP_INTRA_MB_TYPE:
-      case PIP_INTRA4X4_PRED_MODE:
       case PIP_MB_CBP_LUMA:
       case PIP_MB_MVD:
       case PIP_MB_SKIP_FLAG:
