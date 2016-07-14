@@ -34,7 +34,7 @@ class h264_model {
 
  private:
   typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 1, 1, 1> sig_array;
-  typedef Sirikata::Array7d<estimator, 6, 32, 2, 3, 3, 2 * 2, 14> queue_array;
+  typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
   std::unique_ptr<sig_array> significance_estimator;
   std::unique_ptr<queue_array> queue_estimators;
@@ -218,34 +218,13 @@ class h264_model {
           if (above_nonzero) {
             above_nonzero_bit = (above_nonzero >= cur_bit);
           }
-          /*auto *e = &queue_estimators->at(i, serialized_so_far,
-                                          (frames[!cur_frame].meta_at(
-                                              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
-                                          left_nonzero_bit,
-                                          above_nonzero_bit,
-                                          meta.is_8x8 + sub_mb_is_dc * 2 + sub_mb_chroma422 * 4 + sub_mb_cat * 8);*/
-          // bool is_8x8 = sub_mb_size > 32;
           auto *e = &queue_estimators->at(i, serialized_so_far,
                                           (frames[!cur_frame].meta_at(
                                               mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
                                           left_nonzero_bit,
                                           above_nonzero_bit,
-                                          sub_mb_is_dc + 2 * sub_mb_chroma422,
                                           sub_mb_cat);
-          /*auto *e = &queue_estimators->at(nonzero_bits[i], 0,
-                                          0,
-                                          0,
-                                          0,
-                                          0);*/
           put_or_get(e, &nonzero_bits[i]);
-
-          /*if (++COUNT_TOTAL_SYMBOLS < 10000) {
-            if (e->pos > e->neg == nonzero_bits[i]) {
-              NUM_CORRECT++;
-            }
-          } else if (COUNT_TOTAL_SYMBOLS == 10000) {
-            fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
-          }*/
 
           if (nonzero_bits[i]) {
             serialized_so_far |= cur_bit;
@@ -290,9 +269,9 @@ class h264_model {
     switch (ct) {
       case PIP_SIGNIFICANCE_MAP: {
         assert(coding_type == PIP_UNREACHABLE
-               || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index <= 1));
+               || (coding_type == PIP_SIGNIFICANCE_MAP && mb_coord.zigzag_index == 0));
         uint8_t num_nonzeros = 0;
-        for (int i = 0; i < sub_mb_size; ++i) {
+        for (int i = 0; i < sub_mb_size + (sub_mb_size == 15); ++i) {
           int16_t res = frames[cur_frame].at(mb_coord.mb_x, mb_coord.mb_y).residual[mb_coord.scan8_index * 16 + i];
           assert(res == 1 || res == 0);
           if (res != 0) {
@@ -439,12 +418,6 @@ class h264_model {
   }
 
   void update_state_for_model_key(int symbol, estimator* e) {
-    if (coding_type == PIP_SIGNIFICANCE_MAP) {
-      //int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
-      /*if (COUNT_TOTAL_SYMBOLS < 2184)
-        fprintf(LOG_OUT, "%d: %d %d %d %d %d\n", COUNT_TOTAL_SYMBOLS++, symbol, nonzeros_observed, num_nonzeros, e->pos, e->neg);*/
-    }
-
     if (coding_type == PIP_SIGNIFICANCE_EOB) {
       int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
       assert(symbol == (num_nonzeros == nonzeros_observed));
@@ -664,35 +637,18 @@ class h264_model {
             coeff_prev = 1;
           }
         }
-        // if (coeff_prev > 1) fprintf(stdout, "coeff: %d\n", coeff_prev);
         int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
-        /*fprintf(LOG_OUT, "%d,%d,%d,%d,%d,%d,%d,%d\n",
-                symbol,
-                nonzeros_observed, num_nonzeros - nonzeros_observed,
-                sub_mb_is_dc, zigzag_offset, sub_mb_cat, neighbor_above, neighbor_left);*/
+        /*if (COUNT_TOTAL_SYMBOLS < NUM_SYMBOLS_PRINT)
+          fprintf(LOG_OUT, "%d,%d,%d,%d,%d\n",
+                  mb_coord.scan8_index,
+                  nonzeros_observed, num_nonzeros - nonzeros_observed,
+                  zigzag_offset, sub_mb_cat);*/
 
         auto *e = &significance_estimator->at(num_nonzeros - nonzeros_observed,
                                               zigzag_offset,
                                               sub_mb_cat,
                                               0, 0, 0, 0);
-        // e = &cabac_estimator[context];
-        /*if (++COUNT_TOTAL_SYMBOLS < 10000000) {
-          if (e->pos > e->neg == symbol) {
-            NUM_CORRECT++;
-          }
-        } else if (COUNT_TOTAL_SYMBOLS == 10000000) {
-          fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
-        }*/
-        return e;/*&significance_estimator->at(nonzeros_observed,
-                                           num_nonzeros,
-                                           sub_mb_is_dc + zigzag_offset * 2,
-                                           sub_mb_cat,
-                                           is_8x8, 0, 0);*/
-        /*return &significance_estimator->at(nonzeros_observed,
-                                           num_nonzeros,
-                                           sub_mb_is_dc + zigzag_offset * 2,
-                                           sub_mb_cat,
-                                           coeff_neighbor_above, coeff_neighbor_left, 0);*/
+        return e;
       }
       // FIXME: why doesn't this prior help at all
       case PIP_SIGNIFICANCE_EOB:
@@ -726,17 +682,7 @@ class h264_model {
         if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded;
         return &mb_skip_estimator[left][top][last];
       }
-      case PIP_MB_MVD: {
-        auto *e = get_estimator_helper(context);
-        if (++COUNT_TOTAL_SYMBOLS < 5000000) {
-          if (e->pos > e->neg == symbol) {
-            NUM_CORRECT++;
-          }
-        } else if (COUNT_TOTAL_SYMBOLS == 5000000) {
-          fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
-        }
-        return e;
-      }
+      case PIP_MB_MVD:
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_RESIDUALS:

@@ -36,7 +36,7 @@ class decompressor {
   decompressor(const std::string &input_filename, std::ostream &out_stream)
       : input_filename(input_filename), out_stream(out_stream) {
     COUNT_TOTAL_SYMBOLS = 0;
-    LOG_OUT = fopen("decomp.log", "wb");
+    LOG_OUT = fopen("logs/decomp.log", "wb");
     uint8_t *bytes;
     size_t size;
     if (av_file_map(input_filename.c_str(), &bytes, &size, 0, NULL) < 0) {
@@ -48,7 +48,7 @@ class decompressor {
   decompressor(const std::string &input_filename, const std::string &in_bytes, std::ostream &out_stream)
       : input_filename(input_filename), out_stream(out_stream) {
     COUNT_TOTAL_SYMBOLS = 0;
-    LOG_OUT = fopen("decomp.log", "wb");
+    LOG_OUT = fopen("logs/decomp.log", "wb");
     in.ParseFromString(in_bytes);
   }
 
