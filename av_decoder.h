@@ -108,6 +108,10 @@ class av_decoder {
       auto *self = static_cast<typename Driver::cabac_decoder*>(opaque);
       return self->get_bypass();
     }
+    static int get_sign_bypass(void *opaque) {
+      auto *self = static_cast<typename Driver::cabac_decoder*>(opaque);
+      return self->get_sign_bypass();
+    }
     static int get_terminate(void *opaque) {
       auto *self = static_cast<typename Driver::cabac_decoder*>(opaque);
       return self->get_terminate();
@@ -195,6 +199,7 @@ class av_decoder {
       cabac::init_decoder,
       cabac::get,
       cabac::get_bypass,
+      cabac::get_sign_bypass,
       cabac::get_terminate,
       cabac::skip_bytes,
     },

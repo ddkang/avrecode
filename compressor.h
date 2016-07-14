@@ -114,6 +114,13 @@ class compressor {
       return symbol;
     }
 
+    // It may be possible to predict the sign better than random bypass bits.
+    int get_sign_bypass() {
+      int symbol = ::ff_get_cabac_bypass(&ctx);
+      execute_symbol(symbol, model->sign_bypass_context);
+      return symbol;
+    }
+
     int get_terminate() {
       int n = ::ff_get_cabac_terminate(&ctx);
       int symbol = (n != 0);

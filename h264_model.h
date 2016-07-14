@@ -39,6 +39,7 @@ class h264_model {
   std::unique_ptr<sig_array> significance_estimator;
   std::unique_ptr<queue_array> queue_estimators;
   estimator bypass_estimator;
+  estimator sign_bypass_esimator;
   estimator terminate_estimator;
   estimator eob_estimator[2];
   estimator intra4x4_pred_mode_estimator[4][2];
@@ -49,6 +50,7 @@ class h264_model {
  public:
   static constexpr int bypass_context = -1, terminate_context = -2;
   static constexpr int significance_context = -3, eob_context = -4;
+  static constexpr int sign_bypass_context = -5;
 
   size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
   size_t cabac_bill[sizeof(billing_names) / sizeof(billing_names[0])];
@@ -497,6 +499,8 @@ class h264_model {
     switch (context) {
       case bypass_context:
         return &bypass_estimator;
+      case sign_bypass_context:
+        return &sign_bypass_esimator;
       case terminate_context:
         return &terminate_estimator;
       case eob_context:
@@ -705,3 +709,4 @@ class h264_model {
 
 constexpr int h264_model::bypass_context, h264_model::terminate_context;
 constexpr int h264_model::significance_context, h264_model::eob_context;
+constexpr int h264_model::sign_bypass_context;

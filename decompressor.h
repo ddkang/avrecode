@@ -183,6 +183,18 @@ class decompressor {
       return symbol;
     }
 
+    int get_sign_bypass() {
+      int symbol = decoder->get([&](range_t range) {
+        return model->probability_for_state(range, model->sign_bypass_context, 0); // BREAKS DECOMPRESSION
+      });
+      model->update_state(symbol, model->sign_bypass_context);
+      size_t billable_bytes = cabac_encoder.put_bypass(symbol);
+      if (billable_bytes) {
+        model->billable_cabac_bytes(billable_bytes);
+      }
+      return symbol;
+    }
+
     int get_terminate() {
       int symbol = decoder->get([&](range_t range) {
         return model->probability_for_state(range, model->terminate_context, 0);
