@@ -30,6 +30,10 @@ class h264_model {
  public:
   struct estimator {
     int pos = 1, neg = 1;
+    void renormalize() {
+      pos = (pos + 1) / 2;
+      neg = (neg + 1) / 2;
+    }
   };
 
  private:
@@ -431,17 +435,20 @@ class h264_model {
     }
 
     switch (coding_type) {
+      case PIP_RESIDUALS:
+      case PIP_SIGNIFICANCE_NZ:
+      case PIP_MB_MVD:
       case PIP_MB_CBP_LUMA:
-        if (e->pos + e->neg > 512) {
-          e->pos = (e->pos + 1) / 2;
-          e->neg = (e->neg + 1) / 2;
-        }
+        if (e->pos + e->neg > 512)
+          e->renormalize();
+        break;
+      case PIP_SIGNIFICANCE_MAP:
+        if (e->pos + e->neg > 512)
+          e->renormalize();
         break;
       default:
-        if (e->pos + e->neg > 0xA0) {
-          e->pos = (e->pos + 1) / 2;
-          e->neg = (e->neg + 1) / 2;
-        }
+        if (e->pos + e->neg > 0xA0)
+          e-> renormalize();
         break;
     }
     update_state_tracking(symbol);
@@ -648,10 +655,11 @@ class h264_model {
                   nonzeros_observed, num_nonzeros - nonzeros_observed,
                   zigzag_offset, sub_mb_cat);*/
 
+        int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
         auto *e = &significance_estimator->at(num_nonzeros - nonzeros_observed,
                                               zigzag_offset,
                                               sub_mb_cat,
-                                              0, 0, 0, 0);
+                                              mb_type, 0, 0, 0);
         return e;
       }
       // FIXME: why doesn't this prior help at all
