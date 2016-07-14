@@ -227,10 +227,13 @@ class decompressor {
     }
 
     void copy_coefficients(int16_t *block, int max_coeff) {
-      if (!model) {
-        return;
-      }
+      if (!model) return;
       model->copy_coefficients(block, max_coeff);
+    }
+
+    void set_mb_type(int mb_type) {
+      if (!model) return;
+      model->set_mb_type(mb_type);
     }
 
    private:

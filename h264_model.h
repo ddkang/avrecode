@@ -17,6 +17,7 @@ extern "C" {
 #include "recode.h"
 #include "nd_array.h"
 #include "neighbors.h"
+#include "helpers.h"
 
 #pragma once
 
@@ -453,10 +454,20 @@ class h264_model {
     } else {
       e->neg++;
     }
-    if ((coding_type != PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0xA0)
-        || (coding_type == PIP_SIGNIFICANCE_MAP && e->pos + e->neg > 0xA0)) {
-      e->pos = (e->pos + 1) / 2;
-      e->neg = (e->neg + 1) / 2;
+
+    switch (coding_type) {
+      case PIP_MB_CBP_LUMA:
+        if (e->pos + e->neg > 512) {
+          e->pos = (e->pos + 1) / 2;
+          e->neg = (e->neg + 1) / 2;
+        }
+        break;
+      default:
+        if (e->pos + e->neg > 0xA0) {
+          e->pos = (e->pos + 1) / 2;
+          e->neg = (e->neg + 1) / 2;
+        }
+        break;
     }
     update_state_tracking(symbol);
   }
@@ -500,6 +511,11 @@ class h264_model {
                            mb_coord.mb_x, mb_coord.mb_y, mb_coord.scan8_index,
                            ind, j, block[j], sub_mb_size);
     }
+  }
+
+  void set_mb_type(int ff_mb_type) {
+    BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
+    meta.mb_type = parse_ff_mb_type(ff_mb_type);
   }
 
  private:
@@ -660,13 +676,13 @@ class h264_model {
                                               sub_mb_cat,
                                               0, 0, 0, 0);
         // e = &cabac_estimator[context];
-        if (++COUNT_TOTAL_SYMBOLS < 10000000) {
+        /*if (++COUNT_TOTAL_SYMBOLS < 10000000) {
           if (e->pos > e->neg == symbol) {
             NUM_CORRECT++;
           }
         } else if (COUNT_TOTAL_SYMBOLS == 10000000) {
           fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
-        }
+        }*/
         return e;/*&significance_estimator->at(nonzeros_observed,
                                            num_nonzeros,
                                            sub_mb_is_dc + zigzag_offset * 2,
@@ -691,8 +707,15 @@ class h264_model {
         int last = frames[cur_frame].get_frame_num() != 0;
         if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).cbp_luma;
         // losslessh264 uses the block type, which we do not currently track.
-        // return &mb_cbp_luma[0][cbp_luma_bit_num][cbp_luma_last];
+        int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+        int prev_mb_type = frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+
         return get_estimator_helper(context);
+
+        /*if (mb_type == prev_mb_type)
+          return &mb_cbp_luma[last][mb_type][cbp_luma_bit_num];
+        else
+          return get_estimator_helper(context);*/
       }
       case PIP_MB_SKIP_FLAG: {
         int left = mb_coord.mb_x != 0;
@@ -703,11 +726,21 @@ class h264_model {
         if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded;
         return &mb_skip_estimator[left][top][last];
       }
+      case PIP_MB_MVD: {
+        auto *e = get_estimator_helper(context);
+        if (++COUNT_TOTAL_SYMBOLS < 5000000) {
+          if (e->pos > e->neg == symbol) {
+            NUM_CORRECT++;
+          }
+        } else if (COUNT_TOTAL_SYMBOLS == 5000000) {
+          fprintf(stderr, "%f\n", NUM_CORRECT * 1.0 / COUNT_TOTAL_SYMBOLS++);
+        }
+        return e;
+      }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_RESIDUALS:
       case PIP_INTRA_MB_TYPE:
-      case PIP_MB_MVD:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:
       case PIP_P_MB_SUB_TYPE:
