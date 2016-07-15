@@ -37,7 +37,7 @@ class h264_model {
   };
 
  private:
-  typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 1, 1, 1> sig_array;
+  typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 6, 1, 1> sig_array;
   typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
@@ -49,15 +49,20 @@ class h264_model {
   estimator terminate_estimator;
   estimator eob_estimator[2];
 
-  estimator intra4x4_pred_mode_estimator[4][16];
+  estimator intra4x4_pred_mode_skip[16];
+  estimator intra4x4_pred_mode_estimator[4][16][16];
+
   estimator mb_skip_estimator[3][3][3];
   estimator mb_cbp_luma[17][17][4]; // Maybe one more dimension?
 
   estimator mb_mvd_estimator[2][9][12];
   estimator mb_mvd_sign_est[2][12];
-  estimator mb_mvd_exp_est[2][10]; // FIXME can this actually be 21 bits long?
+  estimator mb_mvd_exp_est[2][10]; // FIXME: can this actually be 21 bits long?
 
-  estimator residuals_sign_est;
+  estimator residuals_sign_est[14][64];
+  estimator residuals_bypass_est; // This should almost never occur
+  estimator residuals_is_one_est[14][64];
+  estimator residuals_est[14][64][17];
 
   estimator cabac_estimator[1024]; // FIXME
 
@@ -76,6 +81,10 @@ class h264_model {
   bool do_print;
   CoefficientCoord mb_coord;
 
+  // Residuals context
+  int residuals_bit_num = 0;
+  int residual_index = 0;
+
   // mvd context
   bool mvd_ind = 0; // This can only take two values.
   int mvd_bit_num = 0;
@@ -90,6 +99,7 @@ class h264_model {
   int intra4x4_pred_mode_bit_num = 0;
   int intra4x4_pred_mode_last = 0;
   int intra4x4_pred_mode_running = 0;
+  int intra4x4_pred_mode_last_pred = 0;
 
   // Significance map context
   int nonzeros_observed = 0;
@@ -309,7 +319,6 @@ class h264_model {
         meta.sub_mb_size = sub_mb_size;
       }
         break;
-
       case PIP_INTRA4X4_PRED_MODE: {
         BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
       }
@@ -318,6 +327,8 @@ class h264_model {
         BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
         meta.cbp_luma = cbp_luma_running;
       }
+        break;
+      case PIP_RESIDUALS:
         break;
       default:
         break;
@@ -346,6 +357,7 @@ class h264_model {
         intra4x4_pred_mode_bit_num = 0;
         intra4x4_pred_mode_last = 0;
         intra4x4_pred_mode_running = 0;
+        intra4x4_pred_mode_last_pred = param0;
         break;
       case PIP_MB_CBP_LUMA:
         cbp_luma_bit_num = 0;
@@ -356,6 +368,9 @@ class h264_model {
         mvd_ind = param0;
         mvd_bit_num = 0;
         mvd_state = 0;
+        break;
+      case PIP_RESIDUALS:
+        residual_index = param0;
         break;
       default:
         break;
@@ -442,6 +457,11 @@ class h264_model {
         }
         break;
       case PIP_RESIDUALS:
+        residuals_bit_num++;
+        if (context == sign_bypass_context) {
+          residuals_bit_num = 0;
+        }
+        break;
       case PIP_UNKNOWN:
         break;
       case PIP_UNREACHABLE:
@@ -678,7 +698,8 @@ class h264_model {
           int16_t output = 0;
           if (fetch(true, true, mb_coord, &output)) {
             if (do_print) LOG_NEIGHBORS("%d] ", output);
-            coeff_prev = 4 + std::max(std::min(output, (int16_t) 3), (int16_t) -3);
+            // coeff_prev = 4 + std::max(std::min(output, (int16_t) 3), (int16_t) -3);
+            coeff_prev = 3 + std::max(std::min(output, (int16_t) 1), (int16_t) -1);
           } else {
             if (do_print) LOG_NEIGHBORS("x] ");
             coeff_prev = 1;
@@ -701,8 +722,12 @@ class h264_model {
       // FIXME: why doesn't this prior help at all
       case PIP_SIGNIFICANCE_EOB:
         return &eob_estimator[eob_symbol()];
-      case PIP_INTRA4X4_PRED_MODE:
-        return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num][intra4x4_pred_mode_last];
+      case PIP_INTRA4X4_PRED_MODE: {
+        if (!intra4x4_pred_mode_bit_num)
+          return &intra4x4_pred_mode_skip[intra4x4_pred_mode_last_pred];
+        else
+          return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num][intra4x4_pred_mode_running][intra4x4_pred_mode_last_pred];
+      }
       case PIP_MB_CBP_LUMA: {
         int left = mb_coord.mb_x != 0;
         if (left) left += frames[cur_frame].meta_at(mb_coord.mb_x - 1, mb_coord.mb_y).cbp_luma;
@@ -744,7 +769,15 @@ class h264_model {
       }
       case PIP_RESIDUALS: {
         if (context == sign_bypass_context) {
-          return &residuals_sign_est;
+          return &residuals_sign_est[sub_mb_cat][residual_index];
+        } else if (context == bypass_context) {
+          return &residuals_bypass_est;
+        } else {
+          if (!residuals_bit_num) {
+            return &residuals_is_one_est[sub_mb_cat][residual_index];
+          }
+          int tmp = std::min(residuals_bit_num - 1, 16);
+          return &residuals_est[sub_mb_cat][residual_index][tmp];
         }
       }
       case PIP_SIGNIFICANCE_NZ:
