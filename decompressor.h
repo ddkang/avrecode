@@ -215,11 +215,11 @@ class decompressor {
       bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
       if (begin_queue && ct) {
         model->finished_queueing(ct,
-                                 [&](h264_model::estimator *e, int *symbol) {
+                                 [&](h264_model::estimator *e, int *symbol, int context) {
                                    *symbol = decoder->get([&](range_t range) {
                                      return model->probability_for_model_key(range, e);
                                    });
-                                   model->update_state_for_model_key(*symbol, e);
+                                   model->update_state_for_model_key(*symbol, context, e);
                                  });
         static int i = 0;
         if (i++ < 10) {

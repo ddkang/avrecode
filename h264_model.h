@@ -40,15 +40,25 @@ class h264_model {
   typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 1, 1, 1> sig_array;
   typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 14> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
+
   std::unique_ptr<sig_array> significance_estimator;
   std::unique_ptr<queue_array> queue_estimators;
+
   estimator bypass_estimator;
   estimator sign_bypass_esimator;
   estimator terminate_estimator;
   estimator eob_estimator[2];
-  estimator intra4x4_pred_mode_estimator[4][2];
+
+  estimator intra4x4_pred_mode_estimator[4][16];
   estimator mb_skip_estimator[3][3][3];
   estimator mb_cbp_luma[17][17][4]; // Maybe one more dimension?
+
+  estimator mb_mvd_estimator[2][9][12];
+  estimator mb_mvd_sign_est[2][12];
+  estimator mb_mvd_exp_est[2][10]; // FIXME can this actually be 21 bits long?
+
+  estimator residuals_sign_est;
+
   estimator cabac_estimator[1024]; // FIXME
 
  public:
@@ -65,6 +75,11 @@ class h264_model {
   int cur_frame = 0;
   bool do_print;
   CoefficientCoord mb_coord;
+
+  // mvd context
+  bool mvd_ind = 0; // This can only take two values.
+  int mvd_bit_num = 0;
+  int mvd_state; // unary, exp, rev exp
 
   // cbp luma context
   int cbp_luma_bit_num = 0;
@@ -216,21 +231,23 @@ class h264_model {
 
         do {
           uint32_t cur_bit = (1 << i);
+          uint32_t tmp = serialized_so_far | cur_bit;
           int left_nonzero_bit = 2;
           if (has_left) {
-            left_nonzero_bit = (left_nonzero >= cur_bit);
+            left_nonzero_bit = (left_nonzero >= tmp);
           }
           int above_nonzero_bit = 2;
           if (above_nonzero) {
-            above_nonzero_bit = (above_nonzero >= cur_bit);
+            above_nonzero_bit = (above_nonzero >= tmp);
           }
+          int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
           auto *e = &queue_estimators->at(i, serialized_so_far,
                                           (frames[!cur_frame].meta_at(
-                                              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= cur_bit),
+                                              mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= tmp),
                                           left_nonzero_bit,
                                           above_nonzero_bit,
                                           sub_mb_cat);
-          put_or_get(e, &nonzero_bits[i]);
+          put_or_get(e, &nonzero_bits[i], i); // FIXME: what is the appropriate context here
 
           if (nonzero_bits[i]) {
             serialized_so_far |= cur_bit;
@@ -329,10 +346,16 @@ class h264_model {
         intra4x4_pred_mode_bit_num = 0;
         intra4x4_pred_mode_last = 0;
         intra4x4_pred_mode_running = 0;
+        break;
       case PIP_MB_CBP_LUMA:
         cbp_luma_bit_num = 0;
         cbp_luma_last = 0;
         cbp_luma_running = 0;
+        break;
+      case PIP_MB_MVD:
+        mvd_ind = param0;
+        mvd_bit_num = 0;
+        mvd_state = 0;
         break;
       default:
         break;
@@ -346,17 +369,27 @@ class h264_model {
     coding_type = PIP_SIGNIFICANCE_MAP;
   }
 
-  void update_state_tracking(int symbol) {
+  void update_state_tracking(int symbol, int context) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
       case PIP_INTRA_MB_TYPE:
-      case PIP_MB_MVD:
       case PIP_MB_SKIP_FLAG:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
+        break;
+      case PIP_MB_MVD:
+        if (context == bypass_context && mvd_state == 0) {
+          mvd_state++;
+          mvd_bit_num = -1;
+        }
+        if (context == bypass_context && mvd_state == 1 && symbol == 0) {
+          mvd_state++;
+          mvd_bit_num = -1;
+        }
+        mvd_bit_num++;
         break;
       case PIP_MB_CBP_LUMA:
         cbp_luma_last = symbol;
@@ -420,10 +453,10 @@ class h264_model {
 
   void update_state(int symbol, int context) {
     auto *e = get_estimator(context, symbol);
-    update_state_for_model_key(symbol, e);
+    update_state_for_model_key(symbol, context, e);
   }
 
-  void update_state_for_model_key(int symbol, estimator* e) {
+  void update_state_for_model_key(int symbol, int context, estimator* e) {
     if (coding_type == PIP_SIGNIFICANCE_EOB) {
       int num_nonzeros = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index];
       assert(symbol == (num_nonzeros == nonzeros_observed));
@@ -436,7 +469,6 @@ class h264_model {
 
     switch (coding_type) {
       case PIP_RESIDUALS:
-      case PIP_SIGNIFICANCE_NZ:
       case PIP_MB_MVD:
       case PIP_MB_CBP_LUMA:
         if (e->pos + e->neg > 512)
@@ -446,12 +478,16 @@ class h264_model {
         if (e->pos + e->neg > 512)
           e->renormalize();
         break;
+      case PIP_SIGNIFICANCE_NZ:
+        if (e->pos + e->neg > 800)
+          e->renormalize();
+        break;
       default:
         if (e->pos + e->neg > 0xA0)
           e-> renormalize();
         break;
     }
-    update_state_tracking(symbol);
+    update_state_tracking(symbol, context);
   }
 
   void copy_coefficients(int16_t *block, int max_coeff) {
@@ -546,7 +582,7 @@ class h264_model {
             zigzag_offset = sig_coeff_flag_offset_8x8[0][mb_coord.zigzag_index];
           }
         }
-        assert(sub_mb_cat < 14);  // FIXME: although this let's us get rid of a table
+        assert(sub_mb_cat < 13);  // FIXME: although this let's us get rid of a table
         int neighbor_above = 0;
         int neighbor_left = 0;
         int coeff_neighbor_above = 0;
@@ -694,10 +730,25 @@ class h264_model {
         if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).coded;
         return &mb_skip_estimator[left][top][last];
       }
-      case PIP_MB_MVD:
+      case PIP_MB_MVD: {
+        int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+        if (context == sign_bypass_context) {
+          return &mb_mvd_sign_est[0][0];
+        } else if (context == bypass_context) {
+          int clipped_bit_num = std::min(mvd_bit_num, 9);
+          return &mb_mvd_exp_est[mvd_state - 1][mvd_bit_num];
+        } else {
+          int clipped_num = std::min(mvd_bit_num, 10);
+          return &mb_mvd_estimator[mvd_ind][clipped_num][mb_type];
+        }
+      }
+      case PIP_RESIDUALS: {
+        if (context == sign_bypass_context) {
+          return &residuals_sign_est;
+        }
+      }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
-      case PIP_RESIDUALS:
       case PIP_INTRA_MB_TYPE:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:

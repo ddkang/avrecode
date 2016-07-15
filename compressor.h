@@ -93,7 +93,7 @@ class compressor {
       if (queueing_symbols == PIP_SIGNIFICANCE_MAP || queueing_symbols == PIP_SIGNIFICANCE_EOB ||
           !symbol_buffer.empty()) {
         symbol_buffer.push_back(sym);
-        model->update_state_tracking(symbol);
+        model->update_state_tracking(symbol, state);
       } else {
 #endif
         sym.execute(encoder, model, out, encoder_out);
@@ -148,11 +148,11 @@ class compressor {
       if ((ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB)) {
         stop_queueing_symbols();
         model->finished_queueing(ct,
-                                 [&](h264_model::estimator *e, int *symbol) {
+                                 [&](h264_model::estimator *e, int *symbol, int context) {
                                    size_t billable_bytes = encoder.put(*symbol, [&](range_t range) {
                                      return model->probability_for_model_key(range, e);
                                    });
-                                   model->update_state_for_model_key(*symbol, e);
+                                   model->update_state_for_model_key(*symbol, context, e);
                                    if (billable_bytes) {
                                      model->billable_bytes(billable_bytes);
                                    }
