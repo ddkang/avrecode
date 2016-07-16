@@ -128,6 +128,7 @@ class h264_model {
 
   ~h264_model() {
     bool first = true;
+    size_t total = 0;
     for (size_t i = 0; i < sizeof(billing_names) / sizeof(billing_names[i]); ++i) {
       if (bill[i]) {
         if (first) {
@@ -135,8 +136,10 @@ class h264_model {
         }
         first = false;
         fprintf(stderr, "%s : %ld\n", billing_names[i], bill[i]);
+        total += bill[i];
       }
     }
+    fprintf(stderr, "TOTAL : %ld\n", total);
     for (size_t i = 0; i < sizeof(billing_names) / sizeof(billing_names[i]); ++i) {
       if (cabac_bill[i]) {
         if (first) {
@@ -394,6 +397,7 @@ class h264_model {
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
+      case PIP_CODED_BLOCK:
         break;
       case PIP_MB_MVD:
         if (context == bypass_context && mvd_state == 0) {
@@ -788,6 +792,7 @@ class h264_model {
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
+      case PIP_CODED_BLOCK:
         return get_estimator_helper(context);
       case PIP_UNKNOWN:
         return get_estimator_helper(context);
