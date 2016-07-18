@@ -38,7 +38,7 @@ class h264_model {
 
  private:
   typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 6, 1, 1> sig_array;
-  typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 14> queue_array;
+  typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 6> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
   std::unique_ptr<sig_array> significance_estimator;
@@ -50,7 +50,7 @@ class h264_model {
   estimator eob_estimator[2];
 
   estimator intra4x4_pred_mode_skip[16];
-  estimator intra4x4_pred_mode_estimator[4][16][16];
+  estimator intra4x4_pred_mode_estimator[3][16][16];
 
   estimator mb_skip_estimator[3][3][3];
   estimator mb_cbp_luma[17][17][4]; // Maybe one more dimension?
@@ -63,6 +63,8 @@ class h264_model {
   estimator residuals_bypass_est; // This should almost never occur
   estimator residuals_is_one_est[14][64];
   estimator residuals_est[14][64][17];
+
+  estimator coded_block_est[6][64][2][2];
 
   estimator cabac_estimator[1024]; // FIXME
 
@@ -80,6 +82,10 @@ class h264_model {
   int cur_frame = 0;
   bool do_print;
   CoefficientCoord mb_coord;
+
+  // Coded block context
+  int cbf_nza = 0;
+  int cbf_nzb = 0;
 
   // Residuals context
   int residuals_bit_num = 0;
@@ -374,6 +380,10 @@ class h264_model {
         break;
       case PIP_RESIDUALS:
         residual_index = param0;
+        break;
+      case PIP_CODED_BLOCK:
+        cbf_nza = param0;
+        cbf_nzb = param1;
         break;
       default:
         break;
@@ -730,7 +740,8 @@ class h264_model {
         if (!intra4x4_pred_mode_bit_num)
           return &intra4x4_pred_mode_skip[intra4x4_pred_mode_last_pred];
         else
-          return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num][intra4x4_pred_mode_running][intra4x4_pred_mode_last_pred];
+          return &intra4x4_pred_mode_estimator[intra4x4_pred_mode_bit_num - 1]
+              [intra4x4_pred_mode_running][intra4x4_pred_mode_last_pred];
       }
       case PIP_MB_CBP_LUMA: {
         int left = mb_coord.mb_x != 0;
@@ -784,6 +795,11 @@ class h264_model {
           return &residuals_est[sub_mb_cat][residual_index][tmp];
         }
       }
+      case PIP_CODED_BLOCK: {
+        return &coded_block_est[sub_mb_cat][mb_coord.scan8_index]
+            [!!cbf_nza][!!cbf_nzb];
+      }
+        break;
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_INTRA_MB_TYPE:
@@ -792,7 +808,6 @@ class h264_model {
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
-      case PIP_CODED_BLOCK:
         return get_estimator_helper(context);
       case PIP_UNKNOWN:
         return get_estimator_helper(context);
