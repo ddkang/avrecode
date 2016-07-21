@@ -10,6 +10,9 @@ extern "C" {
 
 #include <algorithm>
 
+#include <string.h>
+#include <stdlib.h>
+
 #include "arithmetic_code.h"
 #include "cabac_code.h"
 #include "recode.pb.h"
@@ -49,6 +52,9 @@ class h264_model {
   estimator terminate_estimator;
   estimator eob_estimator[2];
 
+  // ltype, ttype, intra_slice, bit_num, cbp_chroma
+  estimator intra_mb_type_est[14][14][2][5][2];
+
   estimator intra4x4_pred_mode_skip[16];
   estimator intra4x4_pred_mode_estimator[3][16][16];
 
@@ -62,11 +68,15 @@ class h264_model {
   estimator residuals_sign_est[14][64];
   estimator residuals_bypass_est; // This should almost never occur
   estimator residuals_is_one_est[14][64];
-  estimator residuals_est[14][64][17];
+  typedef Sirikata::Array3d<estimator, 6, 64, 17> residuals_est_array;
+  std::unique_ptr<residuals_est_array> residuals_est;
 
   estimator coded_block_est[6][64][2][2];
 
   estimator cabac_estimator[1024]; // FIXME
+
+  estimator nearly_one;
+  estimator nearly_zero;
 
  public:
   static constexpr int bypass_context = -1, terminate_context = -2;
@@ -82,6 +92,13 @@ class h264_model {
   int cur_frame = 0;
   bool do_print;
   CoefficientCoord mb_coord;
+
+  // intra MB type context
+  int intra_mb_left = 0;
+  int intra_mb_top = 0;
+  bool intra_slice = false;
+  int intra_mb_bit_num = 0;
+  bool intra_mb_cbp_chroma = false;
 
   // Coded block context
   int cbf_nza = 0;
@@ -120,8 +137,13 @@ class h264_model {
     do_print = false;
     memset(bill, 0, sizeof(bill));
     memset(cabac_bill, 0, sizeof(cabac_bill));
+
     significance_estimator = std::make_unique<sig_array>();
     queue_estimators = std::make_unique<queue_array>();
+    residuals_est = std::make_unique<residuals_est_array>();
+
+    deserialize_est(significance_estimator->begin(), std::string("../models/sig_est.bin"));
+    deserialize_est(queue_estimators->begin(), std::string("../models/queue_est.bin"));
   }
 
   void enable_debug() {
@@ -130,6 +152,28 @@ class h264_model {
 
   void disable_debug() {
     do_print = false;
+  }
+
+  void serialize_est(estimator *begin, estimator *end, std::string fname) {
+    const size_t len = end - begin;
+    std::string contents((char*) begin, len * sizeof(estimator));
+
+    // Force flush and deconstruct.
+    {
+      std::ofstream out_file;
+      out_file.open(fname);
+      out_file << contents;
+      out_file.flush();
+    }
+  }
+
+  // This assumes the size of the estimator matches the size of the file.
+  void deserialize_est(estimator *begin, std::string fname) {
+    std::ifstream fin(fname);
+    std::string contents( (std::istreambuf_iterator<char>(fin)),
+                           (std::istreambuf_iterator<char>()));
+
+    memcpy((void *) begin, contents.c_str(), contents.length());
   }
 
   ~h264_model() {
@@ -155,6 +199,9 @@ class h264_model {
         fprintf(stderr, "%s : %ld\n", billing_names[i], cabac_bill[i]);
       }
     }
+
+    // serialize_est(significance_estimator->begin(), significance_estimator->end(), std::string("../models/sig_est.bin"));
+    // serialize_est(queue_estimators->begin(), queue_estimators->end(), std::string("../models/queue_est.bin"));
   }
 
   void billable_bytes(size_t num_bytes_emitted) {
@@ -385,6 +432,13 @@ class h264_model {
         cbf_nza = param0;
         cbf_nzb = param1;
         break;
+      case PIP_INTRA_MB_TYPE:
+        intra_mb_left = parse_ff_mb_type(param0);
+        intra_mb_top = parse_ff_mb_type(param1);
+        intra_slice = zz_index; // ugh
+        intra_mb_bit_num = 0;
+        intra_mb_cbp_chroma = false;
+        break;
       default:
         break;
     }
@@ -400,7 +454,6 @@ class h264_model {
   void update_state_tracking(int symbol, int context) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_NZ:
-      case PIP_INTRA_MB_TYPE:
       case PIP_MB_SKIP_FLAG:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:
@@ -408,6 +461,12 @@ class h264_model {
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
       case PIP_CODED_BLOCK:
+        break;
+      case PIP_INTRA_MB_TYPE:
+        if (intra_mb_bit_num == 2)
+          intra_mb_cbp_chroma = symbol;
+        if (context != terminate_context)
+          intra_mb_bit_num++;
         break;
       case PIP_MB_MVD:
         if (context == bypass_context && mvd_state == 0) {
@@ -792,7 +851,7 @@ class h264_model {
             return &residuals_is_one_est[sub_mb_cat][residual_index];
           }
           int tmp = std::min(residuals_bit_num - 1, 16);
-          return &residuals_est[sub_mb_cat][residual_index][tmp];
+          return &residuals_est->at(sub_mb_cat, residual_index, tmp);
         }
       }
       case PIP_CODED_BLOCK: {
@@ -800,9 +859,16 @@ class h264_model {
             [!!cbf_nza][!!cbf_nzb];
       }
         break;
+      case PIP_INTRA_MB_TYPE: {
+        if (context == terminate_context) {
+          nearly_zero.pos = 1;
+          nearly_zero.neg = 2047;
+          return &nearly_zero;
+        }
+        return &intra_mb_type_est[intra_mb_left][intra_mb_top][intra_slice][intra_mb_bit_num][intra_mb_cbp_chroma];
+      }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
-      case PIP_INTRA_MB_TYPE:
       case PIP_MB_CHROMA_PRE_MODE:
       case PIP_MB_CBP_CHROMA:
       case PIP_P_MB_SUB_TYPE:
