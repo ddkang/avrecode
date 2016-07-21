@@ -52,7 +52,8 @@ class h264_model {
   estimator terminate_estimator;
   estimator eob_estimator[2];
 
-  // ltype, ttype, intra_slice, bit_num, cbp_chroma
+  estimator mb_cbp_chroma_est[2][4][4];
+
   estimator intra_mb_type_est[14][14][2][5][2];
 
   estimator intra4x4_pred_mode_skip[16];
@@ -92,6 +93,11 @@ class h264_model {
   int cur_frame = 0;
   bool do_print;
   CoefficientCoord mb_coord;
+
+  // mb_cbp_chroma
+  int cbp_chroma_bit_num = 0;
+  int cbp_chroma_left = 0;
+  int cbp_chroma_top = 0;
 
   // intra MB type context
   int intra_mb_left = 0;
@@ -439,6 +445,11 @@ class h264_model {
         intra_mb_bit_num = 0;
         intra_mb_cbp_chroma = false;
         break;
+      case PIP_MB_CBP_CHROMA:
+        cbp_chroma_bit_num = 0;
+        cbp_chroma_left = (param0 >> 4) & 0x03;
+        cbp_chroma_top = (param1 >> 4) & 0x03;
+        break;
       default:
         break;
     }
@@ -456,11 +467,13 @@ class h264_model {
       case PIP_SIGNIFICANCE_NZ:
       case PIP_MB_SKIP_FLAG:
       case PIP_MB_CHROMA_PRE_MODE:
-      case PIP_MB_CBP_CHROMA:
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
       case PIP_CODED_BLOCK:
+        break;
+      case PIP_MB_CBP_CHROMA:
+        cbp_chroma_bit_num++;
         break;
       case PIP_INTRA_MB_TYPE:
         if (intra_mb_bit_num == 2)
@@ -867,10 +880,13 @@ class h264_model {
         }
         return &intra_mb_type_est[intra_mb_left][intra_mb_top][intra_slice][intra_mb_bit_num][intra_mb_cbp_chroma];
       }
+      case PIP_MB_CBP_CHROMA: {
+        return &mb_cbp_chroma_est[cbp_chroma_bit_num][cbp_chroma_left][cbp_chroma_top];
+      }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
       case PIP_MB_CHROMA_PRE_MODE:
-      case PIP_MB_CBP_CHROMA:
+      // These are definitely not worth it on iphone
       case PIP_P_MB_SUB_TYPE:
       case PIP_B_MB_SUB_TYPE:
       case PIP_MB_REF:
