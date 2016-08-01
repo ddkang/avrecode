@@ -5,7 +5,7 @@ include ffmpeg/config.mak
 CXX := clang++
 CC := clang
 CXXFLAGS += -O3 -std=c++1y -Wall -g -I. -I./ffmpeg \
-    -I/home/ddkang/libs/protobuf-2.6.1-test/include \
+    $(shell pkg-config --cflags protobuf) \
 		-pthread
 LDLIBS = -L./ffmpeg/libavdevice -lavdevice \
 	 -L./ffmpeg/libavformat -lavformat \
@@ -14,7 +14,7 @@ LDLIBS = -L./ffmpeg/libavdevice -lavdevice \
 	 -L./ffmpeg/libswresample -lswresample \
 	 -L./ffmpeg/libswscale -lswscale \
 	 -L./ffmpeg/libavutil -lavutil \
-	 /home/ddkang/libs/protobuf-2.6.1-test/lib/libprotobuf.a \
+	 $(shell pkg-config --libs protobuf) \
 	 -pthread -lpthread \
 	 $(EXTRALIBS) \
 	 -lstdc++
@@ -39,7 +39,7 @@ recode.o: recode.cpp recode.pb.h arithmetic_code.h cabac_code.h \
     decompressor.h nd_array.h
 
 recode.pb.cc recode.pb.h: recode.proto
-	/home/ddkang/libs/protobuf-2.6.1-test/bin/protoc --cpp_out=. $<
+	protoc --cpp_out=. $<
 
 
 test/arithmetic_code: test/arithmetic_code.o
