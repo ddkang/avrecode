@@ -160,7 +160,7 @@ class decompressor {
         symbol = model->eob_symbol();
       } else {
         symbol = decoder->get([&](range_t range) {
-          return model->probability_for_state(range, state, 0); // This will break decompression. Oh well.
+          return model->probability_for_state(range, state);
         });
       }
       size_t billable_bytes = cabac_encoder.put(symbol, state_pointer);
@@ -173,7 +173,7 @@ class decompressor {
 
     int get_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->bypass_context, 0); // BREAKS DECOMPRESSION
+        return model->probability_for_state(range, model->bypass_context);
       });
       model->update_state(symbol, model->bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
@@ -185,7 +185,7 @@ class decompressor {
 
     int get_sign_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->sign_bypass_context, 0); // BREAKS DECOMPRESSION
+        return model->probability_for_state(range, model->sign_bypass_context);
       });
       model->update_state(symbol, model->sign_bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
@@ -197,7 +197,7 @@ class decompressor {
 
     int get_terminate() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->terminate_context, 0);
+        return model->probability_for_state(range, model->terminate_context);
       });
       model->update_state(symbol, model->terminate_context);
       size_t billable_bytes = cabac_encoder.put_terminate(symbol);

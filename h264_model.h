@@ -253,8 +253,8 @@ class h264_model {
     return (range / total) * e->pos;
   }
 
-  range_t probability_for_state(range_t range, int context, int symbol) {
-    auto *e = get_estimator(context, symbol);
+  range_t probability_for_state(range_t range, int context) {
+    auto *e = get_estimator(context);
     return probability_for_model_key(range, e);
   }
 
@@ -571,7 +571,7 @@ class h264_model {
   }
 
   void update_state(int symbol, int context) {
-    auto *e = get_estimator(context, symbol);
+    auto *e = get_estimator(context);
     update_state_for_model_key(symbol, context, e);
   }
 
@@ -677,7 +677,7 @@ class h264_model {
     }
   }
 
-  estimator* get_estimator(int context, int symbol) {
+  estimator* get_estimator(int context) {
     switch (coding_type) {
       case PIP_SIGNIFICANCE_MAP: {
         static const uint8_t sig_coeff_flag_offset_8x8[2][63] = {
