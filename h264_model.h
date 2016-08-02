@@ -40,8 +40,8 @@ class h264_model {
   };
 
  private:
-  typedef Sirikata::Array7d<estimator, 64, 64, 14, 12, 6, 1, 1> sig_array;
-  typedef Sirikata::Array6d<estimator, 6, 32, 2, 3, 3, 6> queue_array;
+  typedef Sirikata::Array7d<estimator, 64, 64, 6, 12, 1, 1, 1> sig_array;
+  typedef Sirikata::Array6d<estimator, 7, 64, 2, 3, 3, 6> queue_array;
   const int CABAC_STATE_SIZE = 1024;  // FIXME
 
   std::unique_ptr<sig_array> significance_estimator;
@@ -52,7 +52,7 @@ class h264_model {
   estimator terminate_estimator;
   estimator eob_estimator[2];
 
-  estimator chroma_pre_mode_est[3][4][4];
+  estimator chroma_pre_mode_est[3];
 
   estimator mb_cbp_chroma_est[2][4][4];
 
@@ -98,8 +98,6 @@ class h264_model {
 
   // mb_chroma_pre_mode
   int chroma_pre_mode_bit_num = 0;
-  int chroma_pre_mode_left = 0;
-  int chroma_pre_mode_top = 0;
 
   // mb_cbp_chroma
   int cbp_chroma_bit_num = 0;
@@ -286,13 +284,13 @@ class h264_model {
       CodingType last = coding_type;
       coding_type = PIP_SIGNIFICANCE_NZ;
       BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
-      int nonzero_bits[6] = {};
-      for (int i = 0; i < 6; ++i) {
+      int nonzero_bits[7] = {};
+      for (int i = 0; i < 7; ++i) {
         nonzero_bits[i] = (meta.num_nonzeros[mb_coord.scan8_index] & (1 << i)) >> i;
       }
 #define QUEUE_MODE
 #ifdef QUEUE_MODE
-      const uint32_t serialized_bits = sub_mb_size > 16 ? 6 : sub_mb_size > 4 ? 4 : 2;
+      const uint32_t serialized_bits = sub_mb_size > 16 ? 7 : sub_mb_size > 4 ? 5 : 3;
       {
         uint32_t i = 0;
         uint32_t serialized_so_far = 0;
@@ -357,7 +355,7 @@ class h264_model {
       }
 #endif
       meta.num_nonzeros[mb_coord.scan8_index] = 0;
-      for (int i = 0; i < 6; ++i) {
+      for (int i = 0; i < 7; ++i) {
         meta.num_nonzeros[mb_coord.scan8_index] |= nonzero_bits[i] << i;
       }
       if (block_of_interest) {
@@ -459,8 +457,6 @@ class h264_model {
         break;
       case PIP_MB_CHROMA_PRE_MODE:
         chroma_pre_mode_bit_num = 0;
-        chroma_pre_mode_left = param0;
-        chroma_pre_mode_top = param1;
         break;
       default:
         break;
@@ -485,6 +481,7 @@ class h264_model {
         break;
       case PIP_MB_CHROMA_PRE_MODE:
         chroma_pre_mode_bit_num++;
+        break;
       case PIP_MB_CBP_CHROMA:
         cbp_chroma_bit_num++;
         break;
@@ -701,7 +698,7 @@ class h264_model {
             zigzag_offset = sig_coeff_flag_offset_8x8[0][mb_coord.zigzag_index];
           }
         }
-        assert(sub_mb_cat < 13);  // FIXME: although this let's us get rid of a table
+        assert(sub_mb_cat < 6);  // FIXME: although this let's us get rid of a table
         int neighbor_above = 0;
         int neighbor_left = 0;
         int coeff_neighbor_above = 0;
@@ -897,7 +894,7 @@ class h264_model {
         return &mb_cbp_chroma_est[cbp_chroma_bit_num][cbp_chroma_left][cbp_chroma_top];
       }
       case PIP_MB_CHROMA_PRE_MODE: {
-        return &chroma_pre_mode_est[chroma_pre_mode_bit_num][chroma_pre_mode_left][chroma_pre_mode_top];
+        return &chroma_pre_mode_est[chroma_pre_mode_bit_num];
       }
       case PIP_SIGNIFICANCE_NZ:
       case PIP_UNREACHABLE:
