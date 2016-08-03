@@ -317,7 +317,6 @@ class h264_model {
           if (above_nonzero) {
             above_nonzero_bit = (above_nonzero >= tmp);
           }
-          int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
           auto *e = &queue_estimators->at(i, serialized_so_far,
                                           (frames[!cur_frame].meta_at(
                                               mb_coord.mb_x, mb_coord.mb_y).num_nonzeros[mb_coord.scan8_index] >= tmp),
@@ -386,9 +385,7 @@ class h264_model {
         meta.sub_mb_size = sub_mb_size;
       }
         break;
-      case PIP_INTRA4X4_PRED_MODE: {
-        BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
-      }
+      case PIP_INTRA4X4_PRED_MODE:
         break;
       case PIP_MB_CBP_LUMA: {
         BlockMeta &meta = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y);
@@ -699,10 +696,10 @@ class h264_model {
           }
         }
         assert(sub_mb_cat < 6);  // FIXME: although this let's us get rid of a table
-        int neighbor_above = 0;
+        // int neighbor_above = 0;
         int neighbor_left = 0;
-        int coeff_neighbor_above = 0;
-        int coeff_neighbor_left = 0;
+        // int coeff_neighbor_above = 0;
+        // int coeff_neighbor_left = 0;
         do_print = false;
         if (do_print) {
           LOG_NEIGHBORS("[");
@@ -833,8 +830,8 @@ class h264_model {
         int last = frames[cur_frame].get_frame_num() != 0;
         if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).cbp_luma;
         // losslessh264 uses the block type, which we do not currently track.
-        int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
-        int prev_mb_type = frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+        // int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+        // int prev_mb_type = frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
 
         return get_estimator_helper(context);
 
@@ -858,7 +855,7 @@ class h264_model {
           return &mb_mvd_sign_est[0][0];
         } else if (context == bypass_context) {
           int clipped_bit_num = std::min(mvd_bit_num, 9);
-          return &mb_mvd_exp_est[mvd_state - 1][mvd_bit_num];
+          return &mb_mvd_exp_est[mvd_state - 1][clipped_bit_num];
         } else {
           int clipped_num = std::min(mvd_bit_num, 10);
           return &mb_mvd_estimator[mvd_ind][clipped_num][mb_type];
