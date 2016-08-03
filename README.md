@@ -40,7 +40,7 @@ Build and test:
 ```
 brew install protobuf
 cd ffmpeg
-./configure
+./configure --disable-swresample --disable-swscale --disable-postproc --disable-avfilter --disable-encoders --disable-decoders --disable-filters --disable-protocols --disable-muxers --disable-demuxers --disable-parsers --disable-protocols --enable-decoder=h264 --enable-parser=h264 --enable-demuxer=h264
 make
 cd ..
 make
