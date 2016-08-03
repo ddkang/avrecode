@@ -126,7 +126,99 @@ class decompressor {
     return p - buffer_out;
   }
 
-  class cabac_decoder {
+  class generic_decoder {
+   public:
+    void begin_coding_type(
+        CodingType ct, int zigzag_index, int param0, int param1) {
+      bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
+      if (begin_queue && ct) {
+        model->finished_queueing(ct,
+                                 [&](h264_model::estimator *e, int *symbol, int context) {
+                                   *symbol = decoder->get([&](range_t range) {
+                                     return model->probability_for_model_key(range, e);
+                                   });
+                                   model->update_state_for_model_key(*symbol, context, e);
+                                 });
+        static int i = 0;
+        if (i++ < 10) {
+          std::cerr << "FINISHED QUEUING RECODE: " <<
+                    (int) model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
+                                                                  model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index] <<
+                    std::endl;
+        }
+      }
+    }
+
+    void end_coding_type(CodingType ct) {
+      if (!model) {
+        return;
+      }
+      model->end_coding_type(ct);
+    }
+
+    void copy_coefficients(int16_t *block, int max_coeff) {
+      if (!model) return;
+      model->copy_coefficients(block, max_coeff);
+    }
+
+    void set_mb_type(int mb_type) {
+      if (!model) return;
+      model->set_mb_type(mb_type);
+    }
+
+   protected:
+    int index;
+    const Recoded::Block *block;
+    block_state *out = nullptr;
+
+    h264_model *model;
+    std::unique_ptr <recoded_code::decoder<const char *, uint8_t>> decoder;
+
+    std::vector <uint8_t> cabac_out;
+    cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>>
+
+    cabac_encoder {
+      std::back_inserter(cabac_out)
+    };
+
+    void finish() {
+      // Omit trailing byte if it's only a stop bit.
+      if (cabac_out.back() == 0x80) {
+        cabac_out.pop_back();
+      }
+      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
+      out->done = true;
+    }
+  };
+
+  class cavlc_decoder : public generic_decoder {
+   public:
+    // TODO
+    cavlc_decoder(decompressor *d, GetBitContext *ctx_in, const uint8_t *buf, int size) {
+      index = d->recognize_coded_block(buf, size);
+      block = &d->in.block(index);
+      out = &d->blocks[index];
+      model = nullptr;
+
+      if (block->has_cabac()) {
+        model = &d->model;
+        model->reset();
+        decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
+            block->cabac().data(), block->cabac().data() + block->cabac().size()));
+      } else if (block->has_skip_coded() && block->skip_coded()) {
+        // We're skipping this block, so disable calls to our hooks.
+        ctx_in->cavlc_hooks = nullptr;
+        ctx_in->cavlc_hooks_opaque = nullptr;
+      }
+    }
+
+    // FIXME: what do to?
+    void terminate() {
+      finish();
+    }
+  };
+
+  class cabac_decoder : public generic_decoder {
    public:
     cabac_decoder(decompressor *d, CABACContext *ctx_in, const uint8_t *buf,
                   uint8_t *state_start, int size) {
@@ -210,68 +302,8 @@ class decompressor {
       return symbol;
     }
 
-    void begin_coding_type(
-        CodingType ct, int zigzag_index, int param0, int param1) {
-      bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
-      if (begin_queue && ct) {
-        model->finished_queueing(ct,
-                                 [&](h264_model::estimator *e, int *symbol, int context) {
-                                   *symbol = decoder->get([&](range_t range) {
-                                     return model->probability_for_model_key(range, e);
-                                   });
-                                   model->update_state_for_model_key(*symbol, context, e);
-                                 });
-        static int i = 0;
-        if (i++ < 10) {
-          std::cerr << "FINISHED QUEUING RECODE: " <<
-          (int) model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
-                                                        model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index] <<
-          std::endl;
-        }
-      }
-    }
-
-    void end_coding_type(CodingType ct) {
-      if (!model) {
-        return;
-      }
-      model->end_coding_type(ct);
-    }
-
-    void copy_coefficients(int16_t *block, int max_coeff) {
-      if (!model) return;
-      model->copy_coefficients(block, max_coeff);
-    }
-
-    void set_mb_type(int mb_type) {
-      if (!model) return;
-      model->set_mb_type(mb_type);
-    }
-
    private:
-    void finish() {
-      // Omit trailing byte if it's only a stop bit.
-      if (cabac_out.back() == 0x80) {
-        cabac_out.pop_back();
-      }
-      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
-      out->done = true;
-    }
-
-    int index;
-    const Recoded::Block *block;
-    block_state *out = nullptr;
     uint8_t *state_start;
-
-    h264_model *model;
-    std::unique_ptr <recoded_code::decoder<const char *, uint8_t>> decoder;
-
-    std::vector <uint8_t> cabac_out;
-    cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>>
-
-    cabac_encoder {
-      std::back_inserter(cabac_out)
-    };
   };
 
   h264_model *get_model() {

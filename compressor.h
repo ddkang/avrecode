@@ -57,35 +57,8 @@ class compressor {
     return size;
   }
 
-  class cabac_decoder {
+  class generic_decoder {
    public:
-    cabac_decoder(compressor *c, CABACContext *ctx_in, const uint8_t *buf,
-                  uint8_t *state_start, int size) {
-      out = c->find_next_coded_block_and_emit_literal(buf, size);
-      model = nullptr;
-      this->state_start = state_start;
-      if (out == nullptr) {
-        // We're skipping this block, so disable calls to our hooks.
-        ctx_in->coding_hooks = nullptr;
-        ctx_in->coding_hooks_opaque = nullptr;
-        ::ff_reset_cabac_decoder(ctx_in, buf, size);
-        return;
-      }
-
-      out->set_size(size);
-
-      ctx = *ctx_in;
-      ctx.coding_hooks = nullptr;
-      ctx.coding_hooks_opaque = nullptr;
-      ::ff_reset_cabac_decoder(&ctx, buf, size);
-
-      this->c = c;
-      model = &c->model;
-      model->reset();
-    }
-
-    ~cabac_decoder() { assert(out == nullptr || out->has_cabac()); }
-
     void execute_symbol(int symbol, int state) {
       h264_symbol sym(symbol, state);
 #define QUEUE_MODE
@@ -102,34 +75,7 @@ class compressor {
 #endif
     }
 
-    int get(uint8_t *state) {
-      int symbol = ::ff_get_cabac(&ctx, state);
-      execute_symbol(symbol, state - this->state_start);
-      return symbol;
-    }
-
-    int get_bypass() {
-      int symbol = ::ff_get_cabac_bypass(&ctx);
-      execute_symbol(symbol, model->bypass_context);
-      return symbol;
-    }
-
-    // It may be possible to predict the sign better than random bypass bits.
-    int get_sign_bypass() {
-      int symbol = ::ff_get_cabac_bypass(&ctx);
-      execute_symbol(symbol, model->sign_bypass_context);
-      return symbol;
-    }
-
-    int get_terminate() {
-      int n = ::ff_get_cabac_terminate(&ctx);
-      int symbol = (n != 0);
-      execute_symbol(symbol, model->terminate_context);
-      return symbol;
-    }
-
-    void begin_coding_type(
-        CodingType ct, int zigzag_index, int param0, int param1) {
+    void begin_coding_type(CodingType ct, int zigzag_index, int param0, int param1) {
       if (!model) {
         return;
       }
@@ -160,9 +106,9 @@ class compressor {
         static int i = 0;
         if (i++ < 10) {
           std::cerr << "FINISHED QUEUING DECODE: " <<
-          (int) (model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
-                                                         model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index]) <<
-          std::endl;
+                    (int) (model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
+                                                                   model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index]) <<
+                    std::endl;
         }
         pop_queueing_symbols(ct);
         model->coding_type = PIP_UNKNOWN;
@@ -180,7 +126,7 @@ class compressor {
       model->set_mb_type(mb_type);
     }
 
-   private:
+   protected:
     void push_queueing_symbols(CodingType ct) {
       // Does not currently support nested queues.
       assert(queueing_symbols == PIP_UNKNOWN);
@@ -207,15 +153,12 @@ class compressor {
     }
 
     Recoded::Block *out;
-    CABACContext ctx;
     uint8_t *state_start;
 
     compressor *c;
     h264_model *model;
     std::vector <uint8_t> encoder_out;
-    recoded_code::encoder <std::back_insert_iterator<std::vector < uint8_t>>, uint8_t>
-
-    encoder {
+    recoded_code::encoder<std::back_insert_iterator<std::vector<uint8_t> >, uint8_t> encoder {
       std::back_inserter(encoder_out)
     };
 
@@ -223,12 +166,105 @@ class compressor {
     std::vector <h264_symbol> symbol_buffer;
   };
 
+  class cavlc_decoder : public generic_decoder {
+   public:
+    cavlc_decoder(compressor *c, GetBitContext *ctx_in, const uint8_t *buf, int size) {
+      out = c->find_next_coded_block_and_emit_literal(buf, size);
+      model = nullptr;
+      static int BLAHBLAH = 0;
+      if (BLAHBLAH++ == 0) fprintf(stderr, "%d\n", size);
+      if (out == nullptr) {
+        // We're skipping this block, so disable calls to our hooks.
+        ctx_in->cavlc_hooks = nullptr;
+        ctx_in->cavlc_hooks_opaque = nullptr;
+        return;
+      }
+
+      out->set_size(size);
+      gb_ctx = *ctx_in;
+      gb_ctx.cavlc_hooks = nullptr;
+      gb_ctx.cavlc_hooks_opaque = nullptr;
+
+      this->c = c;
+      model = &c->model;
+      model->reset();
+    }
+
+    void terminate() {
+      encoder.finish();
+      out->set_cabac(&encoder_out[0], encoder_out.size());
+    }
+
+    ~cavlc_decoder() { assert(out == nullptr || out->has_cabac()); }
+
+   private:
+    GetBitContext gb_ctx;
+  };
+
+  class cabac_decoder : public generic_decoder {
+   public:
+    cabac_decoder(compressor *c, CABACContext *ctx_in, const uint8_t *buf,
+                  uint8_t *state_start, int size) {
+      out = c->find_next_coded_block_and_emit_literal(buf, size);
+      model = nullptr;
+      this->state_start = state_start;
+      if (out == nullptr) {
+        // We're skipping this block, so disable calls to our hooks.
+        ctx_in->coding_hooks = nullptr;
+        ctx_in->coding_hooks_opaque = nullptr;
+        ::ff_reset_cabac_decoder(ctx_in, buf, size);
+        return;
+      }
+
+      out->set_size(size);
+
+      ctx = *ctx_in;
+      ctx.coding_hooks = nullptr;
+      ctx.coding_hooks_opaque = nullptr;
+      ::ff_reset_cabac_decoder(&ctx, buf, size);
+
+      this->c = c;
+      model = &c->model;
+      model->reset();
+    }
+
+    ~cabac_decoder() { assert(out == nullptr || out->has_cabac()); }
+
+    int get(uint8_t *state) {
+      int symbol = ::ff_get_cabac(&ctx, state);
+      execute_symbol(symbol, state - this->state_start);
+      return symbol;
+    }
+
+    int get_bypass() {
+      int symbol = ::ff_get_cabac_bypass(&ctx);
+      execute_symbol(symbol, model->bypass_context);
+      return symbol;
+    }
+
+    // It may be possible to predict the sign better than random bypass bits.
+    int get_sign_bypass() {
+      int symbol = ::ff_get_cabac_bypass(&ctx);
+      execute_symbol(symbol, model->sign_bypass_context);
+      return symbol;
+    }
+
+    int get_terminate() {
+      int n = ::ff_get_cabac_terminate(&ctx);
+      int symbol = (n != 0);
+      execute_symbol(symbol, model->terminate_context);
+      return symbol;
+    }
+
+   private:
+    CABACContext ctx;
+  };
+
   h264_model *get_model() {
     return &model;
   }
 
  private:
-
   Recoded::Block *find_next_coded_block_and_emit_literal(const uint8_t *buf, int size) {
     uint8_t *found = static_cast<uint8_t *>( memmem(
         &original_bytes[prev_coded_block_end], read_offset - prev_coded_block_end,

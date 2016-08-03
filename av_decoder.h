@@ -8,6 +8,7 @@
 extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavcodec/cabac.h"
+#include "libavcodec/get_bits.h"
 #include "libavcodec/coding_hooks.h"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
@@ -97,7 +98,7 @@ class av_decoder {
                               uint8_t *state_start, int size) {
       av_decoder *self = static_cast<av_decoder*>(opaque);
       auto *cabac_decoder = new typename Driver::cabac_decoder(self->driver, ctx, buf, state_start, size);
-      self->cabac_contexts[ctx].reset(cabac_decoder);
+      self->gen_decoder.reset(cabac_decoder);
       return cabac_decoder;
     }
     static int get(void *opaque, uint8_t *state) {
@@ -118,6 +119,20 @@ class av_decoder {
     }
     static const uint8_t* skip_bytes(void *opaque, int n) {
       throw std::runtime_error("Not implemented: CABAC decoder doesn't use skip_bytes.");
+    }
+  };
+  struct cavlc {
+    static void* init_decoder(void *opaque, GetBitContext *gb, const uint8_t *buf,
+                              uint8_t *state_start, int size) {
+      av_decoder *self = static_cast<av_decoder*>(opaque);
+      auto *cavlc_decoder = new typename Driver::cavlc_decoder(self->driver, gb, buf, size);
+      self->gen_decoder.reset(cavlc_decoder);
+      return cavlc_decoder;
+    }
+
+    static void terminate(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      self->terminate();
     }
   };
   struct model_hooks {
@@ -169,27 +184,19 @@ class av_decoder {
     }
     static void begin_coding_type(void *opaque, CodingType ct,
                                     int zigzag_index, int param0, int param1) {
-      auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
-      assert(cabac_contexts.size() == 1);
-      typename Driver::cabac_decoder*self = cabac_contexts.begin()->second.get();
+      auto self = static_cast<av_decoder*>(opaque)->gen_decoder.get();
       self->begin_coding_type(ct, zigzag_index, param0, param1);
     }
     static void end_coding_type(void *opaque, CodingType ct) {
-      auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
-      assert(cabac_contexts.size() == 1);
-      typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
+      auto self = static_cast<av_decoder*>(opaque)->gen_decoder.get();
       self->end_coding_type(ct);
     }
     static void copy_coefficients(void *opaque, int16_t *block, int max_coeff) {
-      auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
-      assert(cabac_contexts.size() == 1);
-      typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
+      auto self = static_cast<av_decoder*>(opaque)->gen_decoder.get();
       self->copy_coefficients(block, max_coeff);
     }
     static void set_mb_type(void *opaque, int mb_type) {
-      auto &cabac_contexts = static_cast<av_decoder*>(opaque)->cabac_contexts;
-      assert(cabac_contexts.size() == 1);
-      typename Driver::cabac_decoder *self = cabac_contexts.begin()->second.get();
+      auto self = static_cast<av_decoder*>(opaque)->gen_decoder.get();
       self->set_mb_type(mb_type);
     }
   };
@@ -204,6 +211,10 @@ class av_decoder {
       cabac::skip_bytes,
     },
     {
+      cavlc::init_decoder,
+      cavlc::terminate,
+    },
+    {
       model_hooks::frame_spec,
       model_hooks::mb_xy,
       model_hooks::begin_sub_mb,
@@ -214,7 +225,7 @@ class av_decoder {
       model_hooks::set_mb_type,
     },
   };
-  std::map<CABACContext*, std::unique_ptr<typename Driver::cabac_decoder>> cabac_contexts;
+  std::unique_ptr<typename Driver::generic_decoder> gen_decoder;
 };
 
 
