@@ -9,10 +9,7 @@ CXXFLAGS += -O3 -std=c++1y -Wall -g -I. -I./ffmpeg \
 		-pthread
 LDLIBS = -L./ffmpeg/libavdevice -lavdevice \
 	 -L./ffmpeg/libavformat -lavformat \
-	 -L./ffmpeg/libavfilter -lavfilter \
 	 -L./ffmpeg/libavcodec -lavcodec \
-	 -L./ffmpeg/libswresample -lswresample \
-	 -L./ffmpeg/libswscale -lswscale \
 	 -L./ffmpeg/libavutil -lavutil \
 	 $(shell pkg-config --libs protobuf) \
 	 -pthread -lpthread \
