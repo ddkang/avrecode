@@ -193,7 +193,6 @@ class decompressor {
 
   class cavlc_decoder : public generic_decoder {
    public:
-    // TODO
     cavlc_decoder(decompressor *d, GetBitContext *ctx_in, const uint8_t *buf, int size) {
       index = d->recognize_coded_block(buf, size);
       block = &d->in.block(index);
@@ -209,10 +208,44 @@ class decompressor {
         // We're skipping this block, so disable calls to our hooks.
         ctx_in->cavlc_hooks = nullptr;
         ctx_in->cavlc_hooks_opaque = nullptr;
+      } else {
+        throw std::runtime_error("Expected CAVLC block.");
       }
     }
 
-    // FIXME: what do to?
+    ~cavlc_decoder() { assert(out->done); }
+
+    // FIXME
+    int get_ue_golomb() {
+      return 0;
+    }
+    int get_ue_golomb_31() {
+      return 0;
+    }
+    unsigned get_ue_golomb_long() {
+      return 0;
+    }
+    int get_se_golomb() {
+      return 0;
+    }
+    unsigned int get_bits(int n) {
+      return 0;
+    }
+    unsigned int get_bits1() {
+      return 0;
+    }
+    int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
+      return 0;
+    }
+    int get_level_prefix() {
+      return 0;
+    }
+    unsigned int show_bits(int n) {
+      return 0;
+    }
+    void skip_bits(int n) {
+    }
+
     void terminate() {
       finish();
     }

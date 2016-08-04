@@ -122,12 +122,52 @@ class av_decoder {
     }
   };
   struct cavlc {
-    static void* init_decoder(void *opaque, GetBitContext *gb, const uint8_t *buf,
+    static void* init_decoder(void *opaque, void* gb, const uint8_t *buf,
                               uint8_t *state_start, int size) {
       av_decoder *self = static_cast<av_decoder*>(opaque);
-      auto *cavlc_decoder = new typename Driver::cavlc_decoder(self->driver, gb, buf, size);
+      auto *cavlc_decoder = new typename Driver::cavlc_decoder(self->driver, (GetBitContext*) gb, buf, size);
       self->gen_decoder.reset(cavlc_decoder);
       return cavlc_decoder;
+    }
+    static int get_ue_golomb(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_ue_golomb();
+    }
+    static int get_ue_golomb_31(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_ue_golomb_31();
+    }
+    static unsigned get_ue_golomb_long(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_ue_golomb_long();
+    }
+    static int get_se_golomb(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_se_golomb();
+    }
+    static unsigned int get_bits(void *opaque, int n) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_bits(n);
+    }
+    static unsigned int get_bits1(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_bits1();
+    }
+    static int get_vlc2(void *opaque, int16_t (*table)[2], int bits, int max_depth) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_vlc2(table, bits, max_depth);
+    }
+    static int get_level_prefix(void *opaque) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->get_level_prefix();
+    }
+    static unsigned int show_bits(void *opaque, int n) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->show_bits(n);
+    }
+    static void skip_bits(void *opaque, int n) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->skip_bits(n);
     }
 
     static void terminate(void *opaque) {
@@ -212,6 +252,16 @@ class av_decoder {
     },
     {
       cavlc::init_decoder,
+      cavlc::get_ue_golomb,
+      cavlc::get_ue_golomb_31,
+      cavlc::get_ue_golomb_long,
+      cavlc::get_se_golomb,
+      cavlc::get_bits,
+      cavlc::get_bits1,
+      cavlc::get_vlc2,
+      cavlc::get_level_prefix,
+      cavlc::show_bits,
+      cavlc::skip_bits,
       cavlc::terminate,
     },
     {
@@ -227,5 +277,3 @@ class av_decoder {
   };
   std::unique_ptr<typename Driver::generic_decoder> gen_decoder;
 };
-
-

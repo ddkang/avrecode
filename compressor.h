@@ -2,6 +2,9 @@ extern "C" {
 #include "libavcodec/avcodec.h"
 #include "libavcodec/cabac.h"
 #include "libavcodec/coding_hooks.h"
+#include "libavcodec/get_bits.h"
+#include "libavcodec/golomb.h"
+#include "libavcodec/h264_cavlc.h"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
 #include "libavutil/error.h"
@@ -171,8 +174,6 @@ class compressor {
     cavlc_decoder(compressor *c, GetBitContext *ctx_in, const uint8_t *buf, int size) {
       out = c->find_next_coded_block_and_emit_literal(buf, size);
       model = nullptr;
-      static int BLAHBLAH = 0;
-      if (BLAHBLAH++ == 0) fprintf(stderr, "%d\n", size);
       if (out == nullptr) {
         // We're skipping this block, so disable calls to our hooks.
         ctx_in->cavlc_hooks = nullptr;
@@ -181,6 +182,7 @@ class compressor {
       }
 
       out->set_size(size);
+      ff_ctx = ctx_in;
       gb_ctx = *ctx_in;
       gb_ctx.cavlc_hooks = nullptr;
       gb_ctx.cavlc_hooks_opaque = nullptr;
@@ -190,15 +192,79 @@ class compressor {
       model->reset();
     }
 
+    int get_ue_golomb() {
+      int symbol = ::get_ue_golomb(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    int get_ue_golomb_31() {
+      int symbol = ::get_ue_golomb_31(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    unsigned get_ue_golomb_long() {
+      unsigned symbol = ::get_ue_golomb_long(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    int get_se_golomb() {
+      int symbol = ::get_se_golomb(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    unsigned int get_bits(int n) {
+      unsigned int symbol = ::get_bits(&gb_ctx, n);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    unsigned int get_bits1() {
+      unsigned int symbol = ::get_bits1(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
+      int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    int get_level_prefix() {
+      int symbol = ::get_level_prefix(&gb_ctx);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    // I'ts unclear to me whether or not these need to be executed, but it doesn't hurt to
+    unsigned int show_bits(int n) {
+      unsigned int symbol = ::show_bits(&gb_ctx, n);
+      execute_symbol(symbol, 0);
+      return symbol;
+    }
+
+    void skip_bits(int n) {
+      ::skip_bits(&gb_ctx, n);
+    }
+
     void terminate() {
       encoder.finish();
       out->set_cabac(&encoder_out[0], encoder_out.size());
+
+      // The bitstream is used elsewhere so set the hooks to null
+      // Our local context has the hooks to null, so this does what we want
+      *ff_ctx = gb_ctx;
     }
 
     ~cavlc_decoder() { assert(out == nullptr || out->has_cabac()); }
 
    private:
     GetBitContext gb_ctx;
+    GetBitContext *ff_ctx;
   };
 
   class cabac_decoder : public generic_decoder {
