@@ -100,7 +100,9 @@ class decompressor {
             blocks[read_index].length_parity = block.length_parity();
             blocks[read_index].last_byte = block.last_byte()[0];
           }
-          read_block = make_surrogate_block(blocks[read_index].surrogate_marker, block.size());
+          // read_block = make_surrogate_block(blocks[read_index].surrogate_marker, block.size());
+          read_block.resize(block.size(), 0);
+          memcpy((uint8_t *) read_block.c_str(), (uint8_t *) block.cabac().data(), block.size());
         } else if (block.has_skip_coded() && block.skip_coded()) {
           // Non-re-coded CABAC coded block. The bytes of this block are
           // emitted in a literal block following this one. This block is
@@ -166,29 +168,20 @@ class decompressor {
       model->set_mb_type(mb_type);
     }
 
+    virtual void finish() = 0;
+
    protected:
     int index;
     const Recoded::Block *block;
     block_state *out = nullptr;
 
     h264_model *model;
-    std::unique_ptr <recoded_code::decoder<const char *, uint8_t>> decoder;
+    std::unique_ptr<recoded_code::decoder<const char *, uint8_t>> decoder;
 
     std::vector <uint8_t> cabac_out;
-    cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>>
-
-    cabac_encoder {
+    cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>> cabac_encoder {
       std::back_inserter(cabac_out)
     };
-
-    void finish() {
-      // Omit trailing byte if it's only a stop bit.
-      if (cabac_out.back() == 0x80) {
-        cabac_out.pop_back();
-      }
-      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
-      out->done = true;
-    }
   };
 
   class cavlc_decoder : public generic_decoder {
@@ -204,6 +197,12 @@ class decompressor {
         model->reset();
         decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
+
+        //cabac_out.resize(block->size());
+        //memcpy(&cabac_out[0], (uint8_t *) block->cabac().data(), block->size());
+        /*ctx_in->cavlc_hooks = nullptr;
+        ctx_in->cavlc_hooks_opaque = nullptr;
+        finish();*/
       } else if (block->has_skip_coded() && block->skip_coded()) {
         // We're skipping this block, so disable calls to our hooks.
         ctx_in->cavlc_hooks = nullptr;
@@ -215,39 +214,79 @@ class decompressor {
 
     ~cavlc_decoder() { assert(out->done); }
 
+    int get() {
+      const int state = 0;
+      int symbol = decoder->get([&](range_t range) {
+        return model->probability_for_state(range, state);
+      });
+      return symbol;
+    }
+
+    unsigned decode_golomb() {
+      std::bitset<32> bits(0);
+      int zeros = 0;
+      while (0 == get() && zeros < 32) zeros++;
+
+      /*bits[bits.size() - zeros] = 1;
+      for (int i = zeros - 1; i >= 0; i--)
+        bits[bits.size() - i] = get();*/
+      bits[zeros] = 1;
+      for (int i = zeros - 1; i >= 0; i--)
+        bits[zeros + i] = get();
+      int symbol = bits.to_ulong() - 1;
+
+      static int FIRST_TIME_DECOMP = 0;
+      if (FIRST_TIME_DECOMP++ < 10) {
+        fprintf(stderr, "%s %d\n", bits.to_string().c_str(), zeros);
+      }
+      return symbol;
+    }
+
     // FIXME
     int get_ue_golomb() {
-      return 0;
+      return decode_golomb();
     }
     int get_ue_golomb_31() {
-      return 0;
+      return decode_golomb();
     }
     unsigned get_ue_golomb_long() {
-      return 0;
+      return decode_golomb();
     }
     int get_se_golomb() {
-      return 0;
+      int base_symbol = decode_golomb();
+      if (base_symbol % 2 == 0)
+        return -base_symbol / 2;
+      else
+        return base_symbol / 2 + 1; // +1??
     }
     unsigned int get_bits(int n) {
-      return 0;
+      int symbol = 0;
+      for (int i = 0; i < n; i++)
+        symbol = (symbol << 1) + get();
+      return symbol;
     }
     unsigned int get_bits1() {
-      return 0;
+      return get();
     }
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
-      return 0;
+      return decode_golomb();
     }
     int get_level_prefix() {
-      return 0;
+      return decode_golomb();
     }
     unsigned int show_bits(int n) {
-      return 0;
+      return decode_golomb();
     }
     void skip_bits(int n) {
     }
 
     void terminate() {
       finish();
+    }
+
+    void finish() {
+      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
+      out->done = true;
     }
   };
 
@@ -335,6 +374,15 @@ class decompressor {
       return symbol;
     }
 
+    void finish() {
+      // Omit trailing byte if it's only a stop bit.
+      if (cabac_out.back() == 0x80) {
+        cabac_out.pop_back();
+      }
+      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
+      out->done = true;
+    }
+
    private:
     uint8_t *state_start;
   };
@@ -376,12 +424,13 @@ class decompressor {
     const Recoded::Block &block = in.block(index);
     if (block.has_cabac()) {
       if (block.size() != size) {
-        throw std::runtime_error("Invalid surrogate block size.");
+        fprintf(stderr, "%d %d\n", block.size(), size);
+        // throw std::runtime_error("Invalid surrogate block size.");
       }
       std::string buf_header(reinterpret_cast<const char *>(buf),
                              blocks[index].surrogate_marker.size());
       if (blocks[index].surrogate_marker != buf_header) {
-        throw std::runtime_error("Invalid surrogate marker in coded block.");
+        // throw std::runtime_error("Invalid surrogate marker in coded block.");
       }
     } else if (block.has_skip_coded()) {
       if (block.size() != size) {

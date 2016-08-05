@@ -4,7 +4,7 @@ include ffmpeg/config.mak
 # -O2
 CXX := clang++
 CC := clang
-CXXFLAGS += -O3 -std=c++1y -Wall -g -I. -I./ffmpeg \
+CXXFLAGS += -O0 -std=c++1y -Wall -g -I. -I./ffmpeg \
     $(shell pkg-config --cflags protobuf) \
 		-pthread
 LDLIBS = -L./ffmpeg/libavdevice -lavdevice \

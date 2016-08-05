@@ -11,6 +11,7 @@ extern "C" {
 #include "libavutil/file.h"
 }
 
+#include <bitset>
 #include <stdio.h>
 
 #include "arithmetic_code.h"
@@ -190,35 +191,53 @@ class compressor {
       this->c = c;
       model = &c->model;
       model->reset();
+
+      /*if (out != nullptr) {
+        encoder_out.resize(size);
+        memcpy(&encoder_out[0], buf, size);
+        terminate();
+      }*/
+    }
+
+    void execute_golomb(unsigned symbol) {
+      static int FIRST_TIME_COMP = 0;
+      if (FIRST_TIME_COMP++ < 10) fprintf(stderr, "%d\n", symbol);
+      int len = av_log2(symbol + 1) * 2 + 1;
+      std::bitset<32> bits(symbol + 1); // The last len bits
+      for (int i = bits.size() - len; i < bits.size(); i++)
+        execute_symbol(bits[i], 0);
     }
 
     int get_ue_golomb() {
       int symbol = ::get_ue_golomb(&gb_ctx);
-      execute_symbol(symbol, 0);
+      execute_golomb(symbol);
       return symbol;
     }
 
     int get_ue_golomb_31() {
       int symbol = ::get_ue_golomb_31(&gb_ctx);
-      execute_symbol(symbol, 0);
+      execute_golomb(symbol);
       return symbol;
     }
 
+    // Hypothetically, this could do bad things, but in practice it doesn't
     unsigned get_ue_golomb_long() {
       unsigned symbol = ::get_ue_golomb_long(&gb_ctx);
-      execute_symbol(symbol, 0);
+      execute_golomb(symbol);
       return symbol;
     }
 
     int get_se_golomb() {
       int symbol = ::get_se_golomb(&gb_ctx);
-      execute_symbol(symbol, 0);
+      unsigned golomb_symbol = (symbol <= 0) ? -2 * symbol : 2 * symbol - 1;
+      execute_golomb(golomb_symbol);
       return symbol;
     }
 
     unsigned int get_bits(int n) {
-      unsigned int symbol = ::get_bits(&gb_ctx, n);
-      execute_symbol(symbol, 0);
+      unsigned int symbol = 0;
+      for (int i = 0; i < n; i++)
+        symbol = (symbol << 1) + get_bits1();
       return symbol;
     }
 
@@ -230,20 +249,26 @@ class compressor {
 
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
       int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
-      execute_symbol(symbol, 0);
+      // For now, cheat and encode this as a golomb code. Terrible idea.
+      // FIXME
+      execute_golomb(symbol);
       return symbol;
     }
 
     int get_level_prefix() {
       int symbol = ::get_level_prefix(&gb_ctx);
-      execute_symbol(symbol, 0);
+      // For now, cheat and encode this as a golomb code. Terrible idea.
+      // FIXME
+      execute_golomb(symbol);
       return symbol;
     }
 
     // I'ts unclear to me whether or not these need to be executed, but it doesn't hurt to
     unsigned int show_bits(int n) {
       unsigned int symbol = ::show_bits(&gb_ctx, n);
-      execute_symbol(symbol, 0);
+      // execute_symbol(symbol, 0);
+      // I need to figure out what this is actually used for and why
+      execute_golomb(symbol);
       return symbol;
     }
 
