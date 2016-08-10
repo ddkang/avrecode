@@ -27,7 +27,7 @@
 #include <iterator>
 #include <limits>
 
-static const int NUM_SYMBOLS_PRINT = 400;
+static const int NUM_SYMBOLS_PRINT = 40000;
 static int COUNT_TOTAL_SYMBOLS = 0;
 static int NUM_CORRECT = 0;
 static FILE *LOG_OUT;
@@ -112,9 +112,9 @@ struct arithmetic_code {
       FixedPoint range_of_1 = probability_of_1(range);
       FixedPoint range_of_0 = range - range_of_1;
 
-      /*if (COUNT_TOTAL_SYMBOLS < NUM_SYMBOLS_PRINT && sizeof(FixedPoint) == 8)
+      if (COUNT_TOTAL_SYMBOLS < NUM_SYMBOLS_PRINT && sizeof(FixedPoint) == 8)
         fprintf(LOG_OUT, "%d: %d %lu %lu\n",
-                COUNT_TOTAL_SYMBOLS++, symbol, range_of_0, range_of_1);*/
+                COUNT_TOTAL_SYMBOLS++, symbol, range_of_0, range_of_1);
 
       if (symbol != 0) {
         low += range_of_0;
@@ -244,8 +244,8 @@ struct arithmetic_code {
       FixedPoint range_of_0 = range - range_of_1;
       int symbol = (low >= range_of_0);
 
-      /*if (COUNT_TOTAL_SYMBOLS < NUM_SYMBOLS_PRINT)
-        fprintf(LOG_OUT, "%d: %d %lu %lu\n", COUNT_TOTAL_SYMBOLS++, symbol, range_of_0, range_of_1);*/
+      if (COUNT_TOTAL_SYMBOLS < NUM_SYMBOLS_PRINT)
+        fprintf(LOG_OUT, "%d: %d %lu %lu\n", COUNT_TOTAL_SYMBOLS++, symbol, range_of_0, range_of_1);
 
       if (symbol != 0) {
         low -= range_of_0;

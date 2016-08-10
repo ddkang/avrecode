@@ -13,6 +13,40 @@ static const uint8_t * const ff_h264_mlps_state = ff_h264_cabac_tables + H264_ML
 }
 
 
+struct cavlc {
+  template <typename OutputIterator>
+  class encoder {
+   public:
+    explicit encoder(OutputIterator out) : out(out) {}
+
+    size_t put(int symbol) {
+      buffer = (buffer << 1) + (symbol & 1);
+      index++;
+      if (index == 8) {
+        *out++ = buffer;
+        buffer = 0;
+        index = 0;
+        return 1;
+      }
+      return 0;
+    }
+
+    size_t put_last() {
+      if (index != 0) {
+        // *out++ = buffer;
+        while (put(0) != 1);
+        return 1;
+      } else
+        return 0;
+    }
+
+   private:
+    OutputIterator out;
+    uint8_t buffer = 0;
+    int index = 0;
+  };
+};
+
 struct cabac {
   // Word size for encoder/decoder state. Reasonable values: uint64_t, uint32_t.
   typedef uint32_t fixed_point;

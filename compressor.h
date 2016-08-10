@@ -199,13 +199,21 @@ class compressor {
       }*/
     }
 
-    void execute_golomb(unsigned symbol) {
-      static int FIRST_TIME_COMP = 0;
-      if (FIRST_TIME_COMP++ < 10) fprintf(stderr, "%d\n", symbol);
-      int len = av_log2(symbol + 1) * 2 + 1;
-      std::bitset<32> bits(symbol + 1); // The last len bits
-      for (int i = bits.size() - len; i < bits.size(); i++)
+    void execute_golomb(unsigned symbol, bool print) {
+      const int len = av_log2(symbol + 1) * 2 + 1;
+      const std::bitset<32> bits(symbol + 1); // The last len bits
+      for (int i = len - 1; i >= 0; i--) {
+        const int tmp = bits[i];
         execute_symbol(bits[i], 0);
+      }
+      {
+        static int FIRST_TIME_COMP = 0;
+        if (print && FIRST_TIME_COMP++ < 10)
+          fprintf(stderr, "%s %d %d %d\n", bits.to_string().c_str(), symbol, len, gb_ctx.index);
+      }
+    }
+    void execute_golomb(unsigned symbol) {
+      execute_golomb(symbol, true);
     }
 
     int get_ue_golomb() {
@@ -220,9 +228,10 @@ class compressor {
       return symbol;
     }
 
-    // Hypothetically, this could do bad things, but in practice it doesn't
+    // Hypothetically, this could do bad things, but in practice it doesn't (I hope)
     unsigned get_ue_golomb_long() {
-      unsigned symbol = ::get_ue_golomb_long(&gb_ctx);
+      // unsigned symbol = ::get_ue_golomb_long(&gb_ctx);
+      unsigned symbol = ::get_ue_golomb(&gb_ctx);
       execute_golomb(symbol);
       return symbol;
     }
@@ -231,6 +240,8 @@ class compressor {
       int symbol = ::get_se_golomb(&gb_ctx);
       unsigned golomb_symbol = (symbol <= 0) ? -2 * symbol : 2 * symbol - 1;
       execute_golomb(golomb_symbol);
+      static int SE_GOLOMB_COMP = 0;
+      if (SE_GOLOMB_COMP++ <= 10) fprintf(stderr, "se g: %d %d %d\n", SE_GOLOMB_COMP, golomb_symbol, symbol);
       return symbol;
     }
 
@@ -248,27 +259,52 @@ class compressor {
     }
 
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
+      const int prev_index = gb_ctx.index;
       int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
       // For now, cheat and encode this as a golomb code. Terrible idea.
       // FIXME
-      execute_golomb(symbol);
+      {
+        static int VLC_COMP = 0;
+        if (VLC_COMP++ <= 20530 && VLC_COMP > 20520 /*&& VLC_COMP % 10 == 0*/)
+          fprintf(stderr, "vlc: %d %d %d\n", VLC_COMP, symbol, gb_ctx.index);
+      }
+      bool read_twice = false;
+      {
+        const int index_diff = gb_ctx.index - prev_index;
+        int table_ind = 0;
+        while (table[table_ind][0] != symbol) table_ind++;
+        if (index_diff != table[table_ind][1])
+          read_twice = true;
+      }
+      execute_golomb(symbol, false);
+      if (max_depth == 2)
+        execute_symbol(read_twice, 0);
       return symbol;
     }
 
+    // The level prefix is encoded as unary
     int get_level_prefix() {
       int symbol = ::get_level_prefix(&gb_ctx);
       // For now, cheat and encode this as a golomb code. Terrible idea.
       // FIXME
-      execute_golomb(symbol);
+      {
+        static int LEVEL_PREFIX_COMP = 0;
+        if (LEVEL_PREFIX_COMP++ <= 260)
+          fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_COMP, symbol, gb_ctx.index);
+      }
+      execute_golomb(symbol, false);
       return symbol;
     }
 
-    // I'ts unclear to me whether or not these need to be executed, but it doesn't hurt to
+    // It's unclear to me whether or not these need to be executed, but it doesn't hurt to
+    // I need to figure out what this is actually used for and why
     unsigned int show_bits(int n) {
-      unsigned int symbol = ::show_bits(&gb_ctx, n);
-      // execute_symbol(symbol, 0);
-      // I need to figure out what this is actually used for and why
-      execute_golomb(symbol);
+      const unsigned int symbol = ::show_bits(&gb_ctx, n);
+      unsigned int exec_symbol = symbol;
+      for (int i = 0; i < n; i++)
+        execute_symbol( (exec_symbol >> (n - i - 1)) & 1, 0 );
+      static int SHOW_BITS_COMP = 0;
+      if (SHOW_BITS_COMP++ <= 10) fprintf(stderr, "sb: %d %d %d\n", SHOW_BITS_COMP, n, symbol);
       return symbol;
     }
 
@@ -283,6 +319,10 @@ class compressor {
       // The bitstream is used elsewhere so set the hooks to null
       // Our local context has the hooks to null, so this does what we want
       *ff_ctx = gb_ctx;
+
+      static int TERMINATE_COMP = 0;
+      if (TERMINATE_COMP++ <= 40)
+        fprintf(stderr, "gb ctx: %d %d %d %d\n", TERMINATE_COMP, gb_ctx.index, gb_ctx.size_in_bits, gb_ctx.size_in_bits_plus8);
     }
 
     ~cavlc_decoder() { assert(out == nullptr || out->has_cabac()); }

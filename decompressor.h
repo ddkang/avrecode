@@ -100,9 +100,11 @@ class decompressor {
             blocks[read_index].length_parity = block.length_parity();
             blocks[read_index].last_byte = block.last_byte()[0];
           }
-          // read_block = make_surrogate_block(blocks[read_index].surrogate_marker, block.size());
-          read_block.resize(block.size(), 0);
-          memcpy((uint8_t *) read_block.c_str(), (uint8_t *) block.cabac().data(), block.size());
+          read_block = make_surrogate_block(blocks[read_index].surrogate_marker, block.size());
+          // read_block.resize(block.size(), 0);
+          // The first x bytes are used by the bitstream reader
+          memcpy((uint8_t *) read_block.c_str(), (uint8_t *) block.cabac().data(),
+                 std::min(1 << 30, (int) block.size()));
         } else if (block.has_skip_coded() && block.skip_coded()) {
           // Non-re-coded CABAC coded block. The bytes of this block are
           // emitted in a literal block following this one. This block is
@@ -178,9 +180,13 @@ class decompressor {
     h264_model *model;
     std::unique_ptr<recoded_code::decoder<const char *, uint8_t>> decoder;
 
-    std::vector <uint8_t> cabac_out;
+    std::vector <uint8_t> data_out;
     cabac::encoder<std::back_insert_iterator < std::vector < uint8_t>>> cabac_encoder {
-      std::back_inserter(cabac_out)
+      std::back_inserter(data_out)
+    };
+
+    cavlc::encoder<std::back_insert_iterator<std::vector <uint8_t> > > cavlc_encoder {
+      std::back_inserter(data_out)
     };
   };
 
@@ -193,13 +199,18 @@ class decompressor {
       model = nullptr;
 
       if (block->has_cabac()) {
+        // Cheat mode
+        ctx_in->size_in_bits = block->cabac().size() * 8;
+        ctx_in->size_in_bits_plus8 = ctx_in->size_in_bits + 8;
+        ctx_in->buffer_end = ctx_in->buffer + block->cabac().size();
+
         model = &d->model;
         model->reset();
         decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
 
-        //cabac_out.resize(block->size());
-        //memcpy(&cabac_out[0], (uint8_t *) block->cabac().data(), block->size());
+        //data_out.resize(block->size());
+        //memcpy(&data_out[0], (uint8_t *) block->cabac().data(), block->size());
         /*ctx_in->cavlc_hooks = nullptr;
         ctx_in->cavlc_hooks_opaque = nullptr;
         finish();*/
@@ -210,7 +221,11 @@ class decompressor {
       } else {
         throw std::runtime_error("Expected CAVLC block.");
       }
+      cabac_state.resize(1024);
+      ff_ctx = ctx_in;
     }
+    std::vector<uint8_t> cabac_state;
+    GetBitContext *ff_ctx;
 
     ~cavlc_decoder() { assert(out->done); }
 
@@ -219,30 +234,37 @@ class decompressor {
       int symbol = decoder->get([&](range_t range) {
         return model->probability_for_state(range, state);
       });
+      size_t billable_bytes = cavlc_encoder.put(symbol);
+      if (billable_bytes) {
+        model->billable_cabac_bytes(billable_bytes);
+      }
+      model->update_state(symbol, state);
       return symbol;
     }
 
-    unsigned decode_golomb() {
+    unsigned decode_golomb(bool print) {
       std::bitset<32> bits(0);
       int zeros = 0;
       while (0 == get() && zeros < 32) zeros++;
 
-      /*bits[bits.size() - zeros] = 1;
-      for (int i = zeros - 1; i >= 0; i--)
-        bits[bits.size() - i] = get();*/
       bits[zeros] = 1;
-      for (int i = zeros - 1; i >= 0; i--)
-        bits[zeros + i] = get();
+      for (int i = 0; i < zeros; i++)
+        bits[zeros - i - 1] = get();
       int symbol = bits.to_ulong() - 1;
 
-      static int FIRST_TIME_DECOMP = 0;
-      if (FIRST_TIME_DECOMP++ < 10) {
-        fprintf(stderr, "%s %d\n", bits.to_string().c_str(), zeros);
+      const int len = zeros * 2 + 1;
+      ff_ctx->index += len;
+      {
+        static int FIRST_TIME_DECOMP = 0;
+        if (print && FIRST_TIME_DECOMP++ < 10)
+          fprintf(stderr, "%s %d %d %d\n", bits.to_string().c_str(), symbol, len, ff_ctx->index);
       }
       return symbol;
     }
+    unsigned decode_golomb() {
+      return decode_golomb(true);
+    }
 
-    // FIXME
     int get_ue_golomb() {
       return decode_golomb();
     }
@@ -253,31 +275,84 @@ class decompressor {
       return decode_golomb();
     }
     int get_se_golomb() {
-      int base_symbol = decode_golomb();
-      if (base_symbol % 2 == 0)
+      const int base_symbol = decode_golomb();
+      const int symbol = base_symbol % 2 == 0 ? -base_symbol / 2 : base_symbol / 2 + 1;
+      static int SE_GOLOMB_DECOMP = 0;
+      if (SE_GOLOMB_DECOMP++ <= 10) fprintf(stderr, "se g: %d %d %d\n", SE_GOLOMB_DECOMP, base_symbol, symbol);
+      return symbol;
+      /*if (base_symbol % 2 == 0)
         return -base_symbol / 2;
       else
-        return base_symbol / 2 + 1; // +1??
+        return base_symbol / 2 + 1; // +1??*/
     }
     unsigned int get_bits(int n) {
       int symbol = 0;
       for (int i = 0; i < n; i++)
-        symbol = (symbol << 1) + get();
+        symbol |= get() << (n - i - 1);
+
+      ff_ctx->index += n;
+
       return symbol;
     }
     unsigned int get_bits1() {
+      ff_ctx->index += 1;
       return get();
     }
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
-      return decode_golomb();
+      int symbol = decode_golomb(false);
+
+      {
+        const int len = av_log2(symbol + 1) * 2 + 1;
+        ff_ctx->index -= len;
+      }
+      {
+        const bool read_twice = (max_depth == 2) ? get() : false;
+        int table_ind = 0;
+        while (table[table_ind][0] != symbol) table_ind++;
+        ff_ctx->index += table[table_ind][1];
+        if (read_twice)
+          ff_ctx->index += bits;
+      }
+      {
+        static int VLC_DECOMP = 0;
+        if (VLC_DECOMP++ <= 20530 && VLC_DECOMP > 20520 /*&& VLC_DECOMP % 10 == 0*/)
+          fprintf(stderr, "vlc: %d %d %d\n", VLC_DECOMP, symbol, ff_ctx->index);
+      }
+      return symbol;
     }
     int get_level_prefix() {
-      return decode_golomb();
+      int symbol = decode_golomb(false);
+
+      {
+        const int len = av_log2(symbol + 1) * 2 + 1;
+        ff_ctx->index -= len;
+      }
+
+      // Unary
+      ff_ctx->index += symbol + 1;
+
+      {
+        static int LEVEL_PREFIX_DECOMP = 0;
+        if (LEVEL_PREFIX_DECOMP++ <= 260)
+          fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_DECOMP, symbol, ff_ctx->index);
+      }
+
+      return symbol;
     }
     unsigned int show_bits(int n) {
-      return decode_golomb();
+      const int symbol = get_bits(n);
+
+      ff_ctx->index -= n;
+
+      {
+        static int SHOW_BITS_DECOMP = 0;
+        if (SHOW_BITS_DECOMP++ <= 10) fprintf(stderr, "sb: %d %d %d\n", SHOW_BITS_DECOMP, n, symbol);
+      }
+
+      return symbol;
     }
     void skip_bits(int n) {
+      ff_ctx->index += n;
     }
 
     void terminate() {
@@ -285,7 +360,13 @@ class decompressor {
     }
 
     void finish() {
-      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
+      static int SLICE_NUM_DECOMP = 0;
+      fprintf(stderr, "gb ctx: %d %d %d %d\n", ++SLICE_NUM_DECOMP, ff_ctx->index, ff_ctx->size_in_bits, ff_ctx->size_in_bits_plus8);
+      // Cheat mode
+      ff_ctx->size_in_bits = ff_ctx->index;
+      ff_ctx->size_in_bits_plus8 = ff_ctx->size_in_bits + 8;
+
+      out->out_bytes.assign(reinterpret_cast<const char *>(data_out.data()), data_out.size());
       out->done = true;
     }
   };
@@ -376,10 +457,10 @@ class decompressor {
 
     void finish() {
       // Omit trailing byte if it's only a stop bit.
-      if (cabac_out.back() == 0x80) {
-        cabac_out.pop_back();
+      if (data_out.back() == 0x80) {
+        data_out.pop_back();
       }
-      out->out_bytes.assign(reinterpret_cast<const char *>(cabac_out.data()), cabac_out.size());
+      out->out_bytes.assign(reinterpret_cast<const char *>(data_out.data()), data_out.size());
       out->done = true;
     }
 
@@ -424,7 +505,7 @@ class decompressor {
     const Recoded::Block &block = in.block(index);
     if (block.has_cabac()) {
       if (block.size() != size) {
-        fprintf(stderr, "%d %d\n", block.size(), size);
+        fprintf(stderr, "%lu %d\n", block.size(), size);
         // throw std::runtime_error("Invalid surrogate block size.");
       }
       std::string buf_header(reinterpret_cast<const char *>(buf),
