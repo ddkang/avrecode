@@ -321,12 +321,8 @@ class decompressor {
       return symbol;
     }
     int get_level_prefix() {
-      int symbol = decode_golomb(false);
-
-      {
-        const int len = av_log2(symbol + 1) * 2 + 1;
-        ff_ctx->index -= len;
-      }
+      int symbol = 0;
+      while (get() == 0) symbol++;
 
       // Unary
       ff_ctx->index += symbol + 1;

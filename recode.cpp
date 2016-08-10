@@ -82,6 +82,9 @@ int roundtrip(const std::string &input_filename, std::ostream *out) {
     std::string orig_str = original.str();
     std::string decomp_str = decompressed.str();
     std::cerr << orig_str.length() << " " << decomp_str.length() << std::endl;
+    int differ_ind = 0;
+    while (orig_str[differ_ind] == decomp_str[differ_ind]) differ_ind++;
+    std::cerr << differ_ind << std::endl;
     std::cerr << "Compress-decompress roundtrip failed." << std::endl;
     return 1;
   }

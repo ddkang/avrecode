@@ -282,17 +282,17 @@ class compressor {
       return symbol;
     }
 
-    // The level prefix is encoded as unary
     int get_level_prefix() {
       int symbol = ::get_level_prefix(&gb_ctx);
-      // For now, cheat and encode this as a golomb code. Terrible idea.
-      // FIXME
       {
         static int LEVEL_PREFIX_COMP = 0;
         if (LEVEL_PREFIX_COMP++ <= 260)
           fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_COMP, symbol, gb_ctx.index);
       }
-      execute_golomb(symbol, false);
+      // The level prefix is encoded as unary
+      for (int i = 0; i < symbol; i++)
+        execute_symbol(0, 0);
+      execute_symbol(1, 0);
       return symbol;
     }
 
