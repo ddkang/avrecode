@@ -199,6 +199,9 @@ class decompressor {
       model = nullptr;
 
       if (block->has_cabac()) {
+        static int CAVLC_DECODE_INIT = 0;
+        if (CAVLC_DECODE_INIT++ <= 10)
+          fprintf(stderr, "init: %d %d %d\n", CAVLC_DECODE_INIT, ctx_in->size_in_bits, block->cabac().size() * 8);
         // Cheat mode
         ctx_in->size_in_bits = block->cabac().size() * 8;
         ctx_in->size_in_bits_plus8 = ctx_in->size_in_bits + 8;
@@ -208,6 +211,12 @@ class decompressor {
         model->reset();
         decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
+
+        // The CAVLC slice data is not aligned to byte boundaries.
+        // Thus, there will be some data leftover that we need to take care of.
+        const uint8_t first_byte = block->first_byte()[0];
+        for (int i = 0; i < (ctx_in->index & 7); i++)
+          put_single( (first_byte >> (7 - i)) & 1 );
 
         //data_out.resize(block->size());
         //memcpy(&data_out[0], (uint8_t *) block->cabac().data(), block->size());
@@ -221,35 +230,48 @@ class decompressor {
       } else {
         throw std::runtime_error("Expected CAVLC block.");
       }
-      cabac_state.resize(1024);
       ff_ctx = ctx_in;
     }
-    std::vector<uint8_t> cabac_state;
     GetBitContext *ff_ctx;
 
     ~cavlc_decoder() { assert(out->done); }
 
-    int get() {
+    int get_single() {
       const int state = 0;
-      int symbol = decoder->get([&](range_t range) {
+      const int symbol = decoder->get([&](range_t range) {
         return model->probability_for_state(range, state);
       });
+      model->update_state(symbol, state);
+      return symbol;
+    }
+    int put_single(const int symbol) {
       size_t billable_bytes = cavlc_encoder.put(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
       }
-      model->update_state(symbol, state);
       return symbol;
     }
+    int get_and_put(bool put) {
+      const int symbol = get_single();
+      if (put) put_single(symbol);
+      return symbol;
+    }
+    int get() {
+      return get_and_put(true);
+    }
+    int get(bool put) {
+      return get_and_put(put);
+    }
 
-    unsigned decode_golomb(bool print) {
+
+    unsigned decode_golomb(bool print, bool put) {
       std::bitset<32> bits(0);
       int zeros = 0;
-      while (0 == get() && zeros < 32) zeros++;
+      while (0 == get(put) && zeros < 32) zeros++;
 
       bits[zeros] = 1;
       for (int i = 0; i < zeros; i++)
-        bits[zeros - i - 1] = get();
+        bits[zeros - i - 1] = get(put);
       int symbol = bits.to_ulong() - 1;
 
       const int len = zeros * 2 + 1;
@@ -262,7 +284,7 @@ class decompressor {
       return symbol;
     }
     unsigned decode_golomb() {
-      return decode_golomb(true);
+      return decode_golomb(true, true);
     }
 
     int get_ue_golomb() {
@@ -285,38 +307,54 @@ class decompressor {
       else
         return base_symbol / 2 + 1; // +1??*/
     }
-    unsigned int get_bits(int n) {
+    unsigned int get_bits(int n, bool put) {
       int symbol = 0;
       for (int i = 0; i < n; i++)
-        symbol |= get() << (n - i - 1);
+        symbol |= get(put) << (n - i - 1);
 
       ff_ctx->index += n;
 
       return symbol;
+    }
+    unsigned int get_bits(int n) {
+      return get_bits(n, true);
     }
     unsigned int get_bits1() {
       ff_ctx->index += 1;
       return get();
     }
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
-      int symbol = decode_golomb(false);
+      int symbol = decode_golomb(false, false);
 
       {
         const int len = av_log2(symbol + 1) * 2 + 1;
         ff_ctx->index -= len;
       }
+      const bool read_twice = (max_depth == 2) ? get(false) : false;
       {
-        const bool read_twice = (max_depth == 2) ? get() : false;
         int table_ind = 0;
         while (table[table_ind][0] != symbol) table_ind++;
         ff_ctx->index += table[table_ind][1];
         if (read_twice)
           ff_ctx->index += bits;
+
+        if (read_twice == false) {
+          const int cavlc_write_bits = table[table_ind][1];
+          const int cavlc_write_symbol = table_ind;
+          for (int i = 0; i < cavlc_write_bits; i++)
+            put_single( (cavlc_write_symbol >> (bits - i - 1)) & 1 );
+        } else {
+          const int cavlc_write_bits = table[table_ind][1] + bits;
+          show_bits(cavlc_write_bits);
+          skip_bits(cavlc_write_bits);
+          ff_ctx->index -= cavlc_write_bits;
+        }
       }
       {
         static int VLC_DECOMP = 0;
-        if (VLC_DECOMP++ <= 20530 && VLC_DECOMP > 20520 /*&& VLC_DECOMP % 10 == 0*/)
-          fprintf(stderr, "vlc: %d %d %d\n", VLC_DECOMP, symbol, ff_ctx->index);
+        // if (VLC_DECOMP++ <= 20530 && VLC_DECOMP > 20520)
+        if (VLC_DECOMP++ <= 10)
+          fprintf(stderr, "vlc: %d %d %d %d %d\n", VLC_DECOMP, symbol, ff_ctx->index, max_depth, read_twice);
       }
       return symbol;
     }
@@ -326,20 +364,19 @@ class decompressor {
 
       // Unary
       ff_ctx->index += symbol + 1;
-
       {
         static int LEVEL_PREFIX_DECOMP = 0;
-        if (LEVEL_PREFIX_DECOMP++ <= 260)
+        if (LEVEL_PREFIX_DECOMP++ <= -1)
           fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_DECOMP, symbol, ff_ctx->index);
       }
 
       return symbol;
     }
+    unsigned int last_show_bits = 0;
     unsigned int show_bits(int n) {
-      const int symbol = get_bits(n);
+      const unsigned int symbol = last_show_bits = get_bits(n, false);
 
       ff_ctx->index -= n;
-
       {
         static int SHOW_BITS_DECOMP = 0;
         if (SHOW_BITS_DECOMP++ <= 10) fprintf(stderr, "sb: %d %d %d\n", SHOW_BITS_DECOMP, n, symbol);
@@ -348,6 +385,8 @@ class decompressor {
       return symbol;
     }
     void skip_bits(int n) {
+      for (int i = 0; i < n; i++)
+        put_single( (last_show_bits >> (n - i - 1)) & 1 );
       ff_ctx->index += n;
     }
 
@@ -357,7 +396,8 @@ class decompressor {
 
     void finish() {
       static int SLICE_NUM_DECOMP = 0;
-      fprintf(stderr, "gb ctx: %d %d %d %d\n", ++SLICE_NUM_DECOMP, ff_ctx->index, ff_ctx->size_in_bits, ff_ctx->size_in_bits_plus8);
+      if (SLICE_NUM_DECOMP++ <= 10)
+        fprintf(stderr, "gb ctx: %d %d %d %d\n", SLICE_NUM_DECOMP, ff_ctx->index, ff_ctx->size_in_bits, ff_ctx->size_in_bits_plus8);
       // Cheat mode
       ff_ctx->size_in_bits = ff_ctx->index;
       ff_ctx->size_in_bits_plus8 = ff_ctx->size_in_bits + 8;
@@ -501,7 +541,7 @@ class decompressor {
     const Recoded::Block &block = in.block(index);
     if (block.has_cabac()) {
       if (block.size() != size) {
-        fprintf(stderr, "%lu %d\n", block.size(), size);
+        // fprintf(stderr, "%lu %d\n", block.size(), size);
         // throw std::runtime_error("Invalid surrogate block size.");
       }
       std::string buf_header(reinterpret_cast<const char *>(buf),

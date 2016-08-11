@@ -202,10 +202,8 @@ class compressor {
     void execute_golomb(unsigned symbol, bool print) {
       const int len = av_log2(symbol + 1) * 2 + 1;
       const std::bitset<32> bits(symbol + 1); // The last len bits
-      for (int i = len - 1; i >= 0; i--) {
-        const int tmp = bits[i];
+      for (int i = len - 1; i >= 0; i--)
         execute_symbol(bits[i], 0);
-      }
       {
         static int FIRST_TIME_COMP = 0;
         if (print && FIRST_TIME_COMP++ < 10)
@@ -217,7 +215,18 @@ class compressor {
     }
 
     int get_ue_golomb() {
+      const int prev_index = gb_ctx.index;
       int symbol = ::get_ue_golomb(&gb_ctx);
+      const int index_diff = gb_ctx.index - prev_index;
+      static int UE_GOLOMB_COMP = 0;
+      if (UE_GOLOMB_COMP++ <= 10) {
+        gb_ctx.index -= index_diff;
+        const int stream = ::show_bits(&gb_ctx, index_diff);
+        const std::bitset<32> bits(stream);
+        fprintf(stderr, "UE Golomb: %d %d %d %s\n",
+                UE_GOLOMB_COMP, index_diff, symbol, bits.to_string().c_str());
+        gb_ctx.index += index_diff;
+      }
       execute_golomb(symbol);
       return symbol;
     }
@@ -237,11 +246,15 @@ class compressor {
     }
 
     int get_se_golomb() {
-      int symbol = ::get_se_golomb(&gb_ctx);
-      unsigned golomb_symbol = (symbol <= 0) ? -2 * symbol : 2 * symbol - 1;
+      const int prev_index = gb_ctx.index;
+      const int symbol = ::get_se_golomb(&gb_ctx);
+      const unsigned golomb_symbol = (symbol <= 0) ? -2 * symbol : 2 * symbol - 1;
+      const int len = av_log2(golomb_symbol + 1) * 2 + 1;
       execute_golomb(golomb_symbol);
       static int SE_GOLOMB_COMP = 0;
-      if (SE_GOLOMB_COMP++ <= 10) fprintf(stderr, "se g: %d %d %d\n", SE_GOLOMB_COMP, golomb_symbol, symbol);
+      if (SE_GOLOMB_COMP++ <= 10)
+        fprintf(stderr, "se g: %d %d %d %d %d\n",
+                SE_GOLOMB_COMP, prev_index - gb_ctx.index, len, golomb_symbol, symbol);
       return symbol;
     }
 
@@ -263,22 +276,30 @@ class compressor {
       int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
       // For now, cheat and encode this as a golomb code. Terrible idea.
       // FIXME
-      {
-        static int VLC_COMP = 0;
-        if (VLC_COMP++ <= 20530 && VLC_COMP > 20520 /*&& VLC_COMP % 10 == 0*/)
-          fprintf(stderr, "vlc: %d %d %d\n", VLC_COMP, symbol, gb_ctx.index);
-      }
       bool read_twice = false;
+      const int index_diff = gb_ctx.index - prev_index;
       {
-        const int index_diff = gb_ctx.index - prev_index;
         int table_ind = 0;
         while (table[table_ind][0] != symbol) table_ind++;
         if (index_diff != table[table_ind][1])
           read_twice = true;
       }
+      static int VLC_COMP = 0;
+      {
+        // if (VLC_COMP++ <= 20530 && VLC_COMP > 20520 /*&& VLC_COMP % 10 == 0*/)
+        if (VLC_COMP++ <= 10)
+          fprintf(stderr, "vlc: %d %d %d %d %d\n", VLC_COMP, symbol, gb_ctx.index, max_depth, read_twice);
+      }
+
       execute_golomb(symbol, false);
       if (max_depth == 2)
         execute_symbol(read_twice, 0);
+      // FIXME: STUPID STUPID STUPID!! Write out the bits of the VLC
+      if (read_twice) {
+        gb_ctx.index = prev_index;
+        show_bits(index_diff);
+        gb_ctx.index += index_diff;
+      }
       return symbol;
     }
 
@@ -286,7 +307,7 @@ class compressor {
       int symbol = ::get_level_prefix(&gb_ctx);
       {
         static int LEVEL_PREFIX_COMP = 0;
-        if (LEVEL_PREFIX_COMP++ <= 260)
+        if (LEVEL_PREFIX_COMP++ <= -1)
           fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_COMP, symbol, gb_ctx.index);
       }
       // The level prefix is encoded as unary
@@ -408,6 +429,7 @@ class compressor {
       newBlock->set_length_parity(size & 1);
       if (size > 1) {
         newBlock->set_last_byte(&(buf[size - 1]), 1);
+        newBlock->set_first_byte(buf, 1);
       }
       return newBlock;  // Return a block for the recoder to fill.
     } else {
