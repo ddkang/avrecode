@@ -192,11 +192,12 @@ class compressor {
       model = &c->model;
       model->reset();
 
-      /*if (out != nullptr) {
-        encoder_out.resize(size);
-        memcpy(&encoder_out[0], buf, size);
-        terminate();
-      }*/
+      const std::bitset<32> gb_size_bits(ctx_in->size_in_bits);
+      const std::bitset<32> gb_index(ctx_in->index);
+      for (int i = 0; i < gb_size_bits.size(); i++)
+        execute_symbol(gb_size_bits[i], 0);
+      for (int i = 0; i < gb_index.size(); i++)
+        execute_symbol(gb_index[i], 0);
     }
 
     void execute_golomb(unsigned symbol, bool print) {
@@ -223,8 +224,8 @@ class compressor {
         gb_ctx.index -= index_diff;
         const int stream = ::show_bits(&gb_ctx, index_diff);
         const std::bitset<32> bits(stream);
-        fprintf(stderr, "UE Golomb: %d %d %d %s\n",
-                UE_GOLOMB_COMP, index_diff, symbol, bits.to_string().c_str());
+        /*fprintf(stderr, "UE Golomb: %d %d %d %s\n",
+                UE_GOLOMB_COMP, index_diff, symbol, bits.to_string().c_str());*/
         gb_ctx.index += index_diff;
       }
       execute_golomb(symbol);
@@ -273,33 +274,20 @@ class compressor {
 
     int get_vlc2(int16_t (*table)[2], int bits, int max_depth) {
       const int prev_index = gb_ctx.index;
-      int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
-      // For now, cheat and encode this as a golomb code. Terrible idea.
-      // FIXME
-      bool read_twice = false;
+      const int symbol = ::get_vlc2(&gb_ctx, table, bits, max_depth);
       const int index_diff = gb_ctx.index - prev_index;
+
+      gb_ctx.index = prev_index;
+      const int write_symbol = ::get_bits(&gb_ctx, index_diff);
+      for (int i = 0; i < index_diff; i++)
+        execute_symbol( (write_symbol >> (index_diff - i - 1)) & 1, 0);
+
       {
-        int table_ind = 0;
-        while (table[table_ind][0] != symbol) table_ind++;
-        if (index_diff != table[table_ind][1])
-          read_twice = true;
-      }
-      static int VLC_COMP = 0;
-      {
-        // if (VLC_COMP++ <= 20530 && VLC_COMP > 20520 /*&& VLC_COMP % 10 == 0*/)
+        static int VLC_COMP = 0;
         if (VLC_COMP++ <= 10)
-          fprintf(stderr, "vlc: %d %d %d %d %d\n", VLC_COMP, symbol, gb_ctx.index, max_depth, read_twice);
+          fprintf(stderr, "vlc: %d %d %d %d %d %d\n", VLC_COMP, symbol, gb_ctx.index, max_depth, bits, index_diff);
       }
 
-      execute_golomb(symbol, false);
-      if (max_depth == 2)
-        execute_symbol(read_twice, 0);
-      // FIXME: STUPID STUPID STUPID!! Write out the bits of the VLC
-      if (read_twice) {
-        gb_ctx.index = prev_index;
-        show_bits(index_diff);
-        gb_ctx.index += index_diff;
-      }
       return symbol;
     }
 
@@ -307,7 +295,7 @@ class compressor {
       int symbol = ::get_level_prefix(&gb_ctx);
       {
         static int LEVEL_PREFIX_COMP = 0;
-        if (LEVEL_PREFIX_COMP++ <= -1)
+        if (LEVEL_PREFIX_COMP++ <= 100)
           fprintf(stderr, "lp: %d %d %d\n", LEVEL_PREFIX_COMP, symbol, gb_ctx.index);
       }
       // The level prefix is encoded as unary
@@ -317,20 +305,27 @@ class compressor {
       return symbol;
     }
 
-    // It's unclear to me whether or not these need to be executed, but it doesn't hurt to
-    // I need to figure out what this is actually used for and why
+    int last_show_bits = -1;
+    int last_show_n = -1;
     unsigned int show_bits(int n) {
       const unsigned int symbol = ::show_bits(&gb_ctx, n);
-      unsigned int exec_symbol = symbol;
-      for (int i = 0; i < n; i++)
-        execute_symbol( (exec_symbol >> (n - i - 1)) & 1, 0 );
-      static int SHOW_BITS_COMP = 0;
-      if (SHOW_BITS_COMP++ <= 10) fprintf(stderr, "sb: %d %d %d\n", SHOW_BITS_COMP, n, symbol);
+      last_show_bits = symbol;
+      last_show_n = n;
+      {
+        static int SHOW_BITS_COMP = 0;
+        if (SHOW_BITS_COMP++ <= 10)
+          fprintf(stderr, "sb: %d %d %d %d\n", SHOW_BITS_COMP, n, symbol, gb_ctx.index);
+      }
       return symbol;
     }
 
     void skip_bits(int n) {
       ::skip_bits(&gb_ctx, n);
+      const unsigned int symbol = last_show_bits;
+      for (int i = 0; i < n; i++)
+        execute_symbol( (symbol >> (last_show_n - i - 1)) & 1, 0 );
+      last_show_bits = -1;
+      last_show_n = -1;
     }
 
     void terminate() {
@@ -342,7 +337,7 @@ class compressor {
       *ff_ctx = gb_ctx;
 
       static int TERMINATE_COMP = 0;
-      if (TERMINATE_COMP++ <= 40)
+      if (TERMINATE_COMP++ <= 300 && TERMINATE_COMP >= 100)
         fprintf(stderr, "gb ctx: %d %d %d %d\n", TERMINATE_COMP, gb_ctx.index, gb_ctx.size_in_bits, gb_ctx.size_in_bits_plus8);
     }
 
