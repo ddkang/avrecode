@@ -165,6 +165,10 @@ class av_decoder {
       auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
       return self->show_bits(n);
     }
+    static unsigned int recode_show_bits(void *opaque, const int8_t table[256][2], int n) {
+      auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
+      return self->recode_show_bits(table, n);
+    }
     static void skip_bits(void *opaque, int n) {
       auto *self = static_cast<typename Driver::cavlc_decoder*>(opaque);
       return self->skip_bits(n);
@@ -261,6 +265,7 @@ class av_decoder {
       cavlc::get_vlc2,
       cavlc::get_level_prefix,
       cavlc::show_bits,
+      cavlc::recode_show_bits,
       cavlc::skip_bits,
       cavlc::terminate,
     },

@@ -318,7 +318,10 @@ class compressor {
       }
       return symbol;
     }
-
+    // Does not matter from the encode side
+    unsigned int recode_show_bits(const int8_t table[256][2], int n) {
+      return show_bits(n);
+    }
     void skip_bits(int n) {
       ::skip_bits(&gb_ctx, n);
       const unsigned int symbol = last_show_bits;
