@@ -21,6 +21,7 @@ extern "C" {
 #include "recode.pb.h"
 #include "framebuffer.h"
 #include "recode.h"
+#include "estimators.h"
 
 #pragma once
 
@@ -181,22 +182,16 @@ class av_decoder {
   };
   struct model_hooks {
     static void frame_spec(void *opaque, int frame_num, int mb_width, int mb_height) {
-      auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
-      self->update_frame_spec(frame_num, mb_width, mb_height);
+      EstimatorContext::update_frame_spec(frame_num, mb_width, mb_height);
     }
     static void mb_xy(void *opaque, int x, int y) {
-      auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
-      self->mb_coord.mb_x = x;
-      self->mb_coord.mb_y = y;
-      // LOG_NEIGHBORS("%d %d\n", x, y);
+      EstimatorContext::set_mb_xy(x, y);
     }
     static void begin_sub_mb(void *opaque, int cat, int scan8index, int max_coeff, int is_dc, int chroma422) {
-      auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
-      self->sub_mb_cat = cat;
-      self->mb_coord.scan8_index = scan8index;
-      self->sub_mb_size = max_coeff;
-      self->sub_mb_is_dc = is_dc;
-      self->sub_mb_chroma422 = chroma422;
+      EstimatorContext::set_sub_mb_is_dc(is_dc);
+      EstimatorContext::set_sub_mb_cat(cat);
+      EstimatorContext::set_scan8_index(scan8index);
+      EstimatorContext::set_sub_mb_size(max_coeff);
 
       TOTAL_NUM++;
       if (max_coeff == 4)
@@ -213,18 +208,10 @@ class av_decoder {
       }
     }
     static void end_sub_mb(void *opaque, int cat, int scan8index, int max_coeff, int is_dc, int chroma422) {
-      auto *self = static_cast<av_decoder*>(opaque)->driver->get_model();
-      assert(self->sub_mb_cat == cat);
-      assert(self->mb_coord.scan8_index == scan8index);
-      assert(self->sub_mb_size == max_coeff);
-      assert(self->sub_mb_is_dc == is_dc);
-      assert(self->sub_mb_chroma422 == chroma422);
-      self->print_coeffs();
-      self->sub_mb_cat = -1;
-      self->mb_coord.scan8_index = -1;
-      self->sub_mb_size = -1;
-      self->sub_mb_is_dc = 0;
-      self->sub_mb_chroma422 = 0;
+      EstimatorContext::print_coeffs();
+      EstimatorContext::set_sub_mb_cat(-1);
+      EstimatorContext::set_scan8_index(-1);
+      EstimatorContext::set_sub_mb_is_dc(false);
     }
     static void begin_coding_type(void *opaque, CodingType ct,
                                     int zigzag_index, int param0, int param1) {

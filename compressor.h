@@ -98,7 +98,7 @@ class compressor {
       if ((ct == PIP_SIGNIFICANCE_MAP || ct == PIP_SIGNIFICANCE_EOB)) {
         stop_queueing_symbols();
         model->finished_queueing(ct,
-                                 [&](h264_model::estimator *e, int *symbol, int context) {
+                                 [&](estimator *e, int *symbol, int context) {
                                    size_t billable_bytes = encoder.put(*symbol, [&](range_t range) {
                                      return model->probability_for_model_key(range, e);
                                    });
@@ -107,13 +107,6 @@ class compressor {
                                      model->billable_bytes(billable_bytes);
                                    }
                                  });
-        static int i = 0;
-        if (i++ < 10) {
-          std::cerr << "FINISHED QUEUING DECODE: " <<
-                    (int) (model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
-                                                                   model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index]) <<
-                    std::endl;
-        }
         pop_queueing_symbols(ct);
         model->coding_type = PIP_UNKNOWN;
       }
@@ -122,12 +115,12 @@ class compressor {
 
     void copy_coefficients(int16_t *block, int max_coeff) {
       if (!model) return;
-      model->copy_coefficients(block, max_coeff);
+      EstimatorContext::copy_coefficients(block, max_coeff);
     }
 
     void set_mb_type(int mb_type) {
       if (!model) return;
-      model->set_mb_type(mb_type);
+      EstimatorContext::set_mb_type(mb_type);
     }
 
    protected:
@@ -211,9 +204,7 @@ class compressor {
     }
 
     int get_ue_golomb() {
-      const int prev_index = gb_ctx.index;
       int symbol = ::get_ue_golomb(&gb_ctx);
-      const int index_diff = gb_ctx.index - prev_index;
       execute_golomb(symbol);
       return symbol;
     }
@@ -234,7 +225,6 @@ class compressor {
     int get_se_golomb() {
       const int symbol = ::get_se_golomb(&gb_ctx);
       const unsigned golomb_symbol = (symbol <= 0) ? -2 * symbol : 2 * symbol - 1;
-      const int len = av_log2(golomb_symbol + 1) * 2 + 1;
       execute_golomb(golomb_symbol);
       return symbol;
     }
@@ -348,21 +338,21 @@ class compressor {
 
     int get_bypass() {
       int symbol = ::ff_get_cabac_bypass(&ctx);
-      execute_symbol(symbol, model->bypass_context);
+      execute_symbol(symbol, EstimatorContext::bypass_context);
       return symbol;
     }
 
     // It may be possible to predict the sign better than random bypass bits.
     int get_sign_bypass() {
       int symbol = ::ff_get_cabac_bypass(&ctx);
-      execute_symbol(symbol, model->sign_bypass_context);
+      execute_symbol(symbol, EstimatorContext::sign_bypass_context);
       return symbol;
     }
 
     int get_terminate() {
       int n = ::ff_get_cabac_terminate(&ctx);
       int symbol = (n != 0);
-      execute_symbol(symbol, model->terminate_context);
+      execute_symbol(symbol, EstimatorContext::terminate_context);
       return symbol;
     }
 

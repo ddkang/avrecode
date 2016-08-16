@@ -134,19 +134,12 @@ class decompressor {
       bool begin_queue = model && model->begin_coding_type(ct, zigzag_index, param0, param1);
       if (begin_queue && ct) {
         model->finished_queueing(ct,
-                                 [&](h264_model::estimator *e, int *symbol, int context) {
+                                 [&](estimator *e, int *symbol, int context) {
                                    *symbol = decoder->get([&](range_t range) {
                                      return model->probability_for_model_key(range, e);
                                    });
                                    model->update_state_for_model_key(*symbol, context, e);
                                  });
-        static int i = 0;
-        if (i++ < 10) {
-          std::cerr << "FINISHED QUEUING RECODE: " <<
-                    (int) model->frames[model->cur_frame].meta_at(model->mb_coord.mb_x,
-                                                                  model->mb_coord.mb_y).num_nonzeros[model->mb_coord.scan8_index] <<
-                    std::endl;
-        }
       }
     }
 
@@ -159,12 +152,12 @@ class decompressor {
 
     void copy_coefficients(int16_t *block, int max_coeff) {
       if (!model) return;
-      model->copy_coefficients(block, max_coeff);
+      EstimatorContext::copy_coefficients(block, max_coeff);
     }
 
     void set_mb_type(int mb_type) {
       if (!model) return;
-      model->set_mb_type(mb_type);
+      EstimatorContext::set_mb_type(mb_type);
     }
 
     virtual void finish() = 0;
@@ -400,7 +393,7 @@ class decompressor {
       int state = state_pointer - this->state_start;
       int symbol;
       if (model->coding_type == PIP_SIGNIFICANCE_EOB) {
-        symbol = model->eob_symbol();
+        symbol = EstimatorContext::eob_symbol();
       } else {
         symbol = decoder->get([&](range_t range) {
           return model->probability_for_state(range, state);
@@ -416,9 +409,9 @@ class decompressor {
 
     int get_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->bypass_context);
+        return model->probability_for_state(range, EstimatorContext::bypass_context);
       });
-      model->update_state(symbol, model->bypass_context);
+      model->update_state(symbol, EstimatorContext::bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
@@ -428,9 +421,9 @@ class decompressor {
 
     int get_sign_bypass() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->sign_bypass_context);
+        return model->probability_for_state(range, EstimatorContext::sign_bypass_context);
       });
-      model->update_state(symbol, model->sign_bypass_context);
+      model->update_state(symbol, EstimatorContext::sign_bypass_context);
       size_t billable_bytes = cabac_encoder.put_bypass(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);
@@ -440,9 +433,9 @@ class decompressor {
 
     int get_terminate() {
       int symbol = decoder->get([&](range_t range) {
-        return model->probability_for_state(range, model->terminate_context);
+        return model->probability_for_state(range, EstimatorContext::terminate_context);
       });
-      model->update_state(symbol, model->terminate_context);
+      model->update_state(symbol, EstimatorContext::terminate_context);
       size_t billable_bytes = cabac_encoder.put_terminate(symbol);
       if (billable_bytes) {
         model->billable_cabac_bytes(billable_bytes);

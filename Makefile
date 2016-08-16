@@ -33,7 +33,7 @@ recode: recode.o recode.pb.o ffmpeg/libavcodec/libavcodec.a
 
 recode.o: recode.cpp recode.pb.h arithmetic_code.h cabac_code.h \
     recode.h av_decoder.h neighbors.h h264_model.h h264_symbol.h compressor.h \
-    decompressor.h nd_array.h
+    decompressor.h nd_array.h estimators.h
 
 recode.pb.cc recode.pb.h: recode.proto
 	protoc --cpp_out=. $<

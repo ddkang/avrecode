@@ -34,7 +34,7 @@ class h264_symbol {
       }
     }
     model->update_state(symbol, state);
-    if (state == model->terminate_context && symbol) {
+    if (state == EstimatorContext::terminate_context && symbol) {
       encoder.finish();
       out->set_cabac(&encoder_out[0], encoder_out.size());
     }
