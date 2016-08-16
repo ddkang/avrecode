@@ -102,10 +102,6 @@ class decompressor {
             blocks[read_index].last_byte = block.last_byte()[0];
           }
           read_block = make_surrogate_block(blocks[read_index].surrogate_marker, block.size());
-          // read_block.resize(block.size(), 0);
-          // The first x bytes are used by the bitstream reader
-          memcpy((uint8_t *) read_block.c_str(), (uint8_t *) block.cabac().data(),
-                 std::min(1 << 30, (int) block.size()));
         } else if (block.has_skip_coded() && block.skip_coded()) {
           // Non-re-coded CABAC coded block. The bytes of this block are
           // emitted in a literal block following this one. This block is
