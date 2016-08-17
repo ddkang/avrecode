@@ -342,6 +342,22 @@ class CABACCbpLumaEst : public EstimatorContext {
   }
   estimator* get_estimator(const int context) {
     return &est[0][mb_type][0];
+    /*int left = mb_coord.mb_x != 0;
+    if (left) left += frames[cur_frame].meta_at(mb_coord.mb_x - 1, mb_coord.mb_y).cbp_luma;
+    int top = mb_coord.mb_y != 0;
+    if (top) top += frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y - 1).cbp_luma;
+    int last = frames[cur_frame].get_frame_num() != 0;
+    if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).cbp_luma;*/
+    // losslessh264 uses the block type, which we do not currently track.
+    // int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+    // int prev_mb_type = frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
+
+    // return cbp_luma.get_estimator(context);
+
+    /*if (mb_type == prev_mb_type)
+      return &mb_cbp_luma[last][mb_type][cbp_luma_bit_num];
+    else
+      return generic_est.get_estimator(context);*/
   }
 
  private:

@@ -47,6 +47,8 @@ class h264_model {
   CABACSignificanceMapEst sig_map_est;
   CABACSignificanceEOBEst eob_est;
 
+  std::array<EstimatorContext *, PIP_NUM_TYPES> all_estimators;
+
  public:
   size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
   size_t cabac_bill[sizeof(billing_names) / sizeof(billing_names[0])];
@@ -62,6 +64,28 @@ class h264_model {
     do_print = false;
     memset(bill, 0, sizeof(bill));
     memset(cabac_bill, 0, sizeof(cabac_bill));
+
+    // Ugh
+    all_estimators[PIP_UNKNOWN] = &generic_est;
+    all_estimators[PIP_SIGNIFICANCE_MAP] = &sig_map_est;
+    all_estimators[PIP_SIGNIFICANCE_EOB] = &eob_est;
+    all_estimators[PIP_RESIDUALS] = &residuals;
+    all_estimators[PIP_INTRA_MB_TYPE] = &intra_mb_type;
+    all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred;
+    all_estimators[PIP_MB_MVD] = &mvd_est;
+    all_estimators[PIP_MB_SKIP_FLAG] = &mb_skip;
+    all_estimators[PIP_MB_CHROMA_PRE_MODE] = &chroma_pre_mode;
+    all_estimators[PIP_MB_CBP_CHROMA] = &cbp_chroma;
+    all_estimators[PIP_CODED_BLOCK] = &coded_block;
+    // Not worth on iphone
+    all_estimators[PIP_P_MB_SUB_TYPE] = &generic_est;
+    all_estimators[PIP_B_MB_SUB_TYPE] = &generic_est;
+    all_estimators[PIP_MB_REF] = &generic_est;
+    // Maybe worth, but I haven't figured out the right priors
+    all_estimators[PIP_MB_CBP_LUMA] = &generic_est;
+    // Should never be used in CABAC
+    all_estimators[PIP_UNREACHABLE] = nullptr;
+    all_estimators[PIP_SIGNIFICANCE_NZ] = nullptr;
   }
 
   void enable_debug() {
@@ -162,43 +186,9 @@ class h264_model {
   }
 
   bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) {
-    bool begin_queueing = false;
+    bool begin_queueing = ct == PIP_SIGNIFICANCE_MAP;
     coding_type = ct;
-    switch (ct) {
-      case PIP_SIGNIFICANCE_MAP:
-        sig_map_est.begin(zz_index, param0, param1);
-        begin_queueing = true;
-        break;
-      case PIP_INTRA4X4_PRED_MODE:
-        intra4x4_pred.begin(zz_index, param0, param1);
-        break;
-      case PIP_MB_CBP_LUMA:
-        cbp_luma.begin(zz_index, param0, param1);
-        break;
-      case PIP_MB_MVD:
-        mvd_est.begin(zz_index, param0, param1);
-        break;
-      case PIP_RESIDUALS:
-        residuals.begin(zz_index, param0, param1);
-        break;
-      case PIP_CODED_BLOCK:
-        coded_block.begin(zz_index, param0, param1);
-        break;
-      case PIP_INTRA_MB_TYPE:
-        intra_mb_type.begin(zz_index, param0, param1);
-        break;
-      case PIP_MB_CBP_CHROMA:
-        cbp_chroma.begin(zz_index, param0, param1);
-        break;
-      case PIP_MB_CHROMA_PRE_MODE:
-        chroma_pre_mode.begin(zz_index, param0, param1);
-        break;
-      case PIP_MB_SKIP_FLAG:
-        mb_skip.begin(zz_index, param0, param1);
-        break;
-      default:
-        break;
-    }
+    all_estimators[coding_type]->begin(zz_index, param0, param1);
     return begin_queueing;
   }
 
@@ -208,48 +198,12 @@ class h264_model {
   }
 
   void update_state_tracking(int symbol, int context) {
-    switch (coding_type) {
-      case PIP_SIGNIFICANCE_NZ:
-      case PIP_MB_SKIP_FLAG:
-      case PIP_P_MB_SUB_TYPE:
-      case PIP_B_MB_SUB_TYPE:
-      case PIP_MB_REF:
-      case PIP_CODED_BLOCK:
-        break;
-      case PIP_MB_CHROMA_PRE_MODE:
-        chroma_pre_mode.update(symbol, context);
-        break;
-      case PIP_MB_CBP_CHROMA:
-        cbp_chroma.update(symbol, context);
-        break;
-      case PIP_INTRA_MB_TYPE:
-        intra_mb_type.update(symbol, context);
-        break;
-      case PIP_MB_MVD:
-        mvd_est.update(symbol, context);
-        break;
-      case PIP_MB_CBP_LUMA:
-        cbp_luma.update(symbol, context);
-        break;
-      case PIP_INTRA4X4_PRED_MODE:
-        intra4x4_pred.update(symbol, context);
-        break;
-      case PIP_SIGNIFICANCE_MAP:
-        coding_type = sig_map_est.update(symbol, context);
-        break;
-      case PIP_SIGNIFICANCE_EOB:
-        coding_type = eob_est.update(symbol, context);
-        break;
-      case PIP_RESIDUALS:
-        residuals.update(symbol, context);
-        break;
-      case PIP_UNKNOWN:
-        break;
-      case PIP_UNREACHABLE:
-        assert(false);
-      default:
-        assert(false);
-    }
+    if (coding_type == PIP_UNREACHABLE)
+      assert(false);
+    // Annoyingly, this is a special case
+    if (coding_type == PIP_SIGNIFICANCE_NZ)
+      return;
+    coding_type = all_estimators[coding_type]->update(symbol, context);
   }
 
   void update_state(int symbol, int context) {
@@ -291,60 +245,10 @@ class h264_model {
 
  private:
   estimator* get_estimator(int context) {
-    switch (coding_type) {
-      case PIP_SIGNIFICANCE_MAP:
-        return sig_map_est.get_estimator(context);
-      // FIXME: why doesn't this prior help at all
-      case PIP_SIGNIFICANCE_EOB:
-        return eob_est.get_estimator(context);
-      case PIP_INTRA4X4_PRED_MODE:
-        return intra4x4_pred.get_estimator(context);
-      case PIP_MB_CBP_LUMA: {
-        /*int left = mb_coord.mb_x != 0;
-        if (left) left += frames[cur_frame].meta_at(mb_coord.mb_x - 1, mb_coord.mb_y).cbp_luma;
-        int top = mb_coord.mb_y != 0;
-        if (top) top += frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y - 1).cbp_luma;
-        int last = frames[cur_frame].get_frame_num() != 0;
-        if (last) last += frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).cbp_luma;*/
-        // losslessh264 uses the block type, which we do not currently track.
-        // int mb_type = frames[cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
-        // int prev_mb_type = frames[!cur_frame].meta_at(mb_coord.mb_x, mb_coord.mb_y).mb_type;
-
-        return generic_est.get_estimator(context);
-        // return cbp_luma.get_estimator(context);
-
-        /*if (mb_type == prev_mb_type)
-          return &mb_cbp_luma[last][mb_type][cbp_luma_bit_num];
-        else
-          return generic_est.get_estimator(context);*/
-      }
-      case PIP_MB_SKIP_FLAG:
-        return  mb_skip.get_estimator(context);
-      case PIP_MB_MVD:
-        return mvd_est.get_estimator(context);
-      case PIP_RESIDUALS:
-        return residuals.get_estimator(context);
-      case PIP_CODED_BLOCK:
-        return coded_block.get_estimator(context);
-      case PIP_INTRA_MB_TYPE:
-        return intra_mb_type.get_estimator(context);
-      case PIP_MB_CBP_CHROMA:
-        return cbp_chroma.get_estimator(context);
-      case PIP_MB_CHROMA_PRE_MODE:
-        return chroma_pre_mode.get_estimator(context);
-      case PIP_SIGNIFICANCE_NZ:
-      case PIP_UNREACHABLE:
-      // These are definitely not worth it on iphone
-      case PIP_P_MB_SUB_TYPE:
-      case PIP_B_MB_SUB_TYPE:
-      case PIP_MB_REF:
-        return generic_est.get_estimator(context);
-      case PIP_UNKNOWN:
-        return generic_est.get_estimator(context);
-      default:
-        break;
+    if (coding_type == PIP_UNREACHABLE) {
+      assert(false && "Unreachable");
+      abort();
     }
-    assert(false && "Unreachable");
-    abort();
+    return all_estimators[coding_type]->get_estimator(context);
   }
 };
