@@ -236,3 +236,31 @@ class CAVLCChromaPredModeEst : public EstimatorContext {
  private:
   GolombEstimator est[MB_NUM_TYPES];
 };
+
+// Not used in walk, but I'll keep it here for bookkeeping purposes.
+class CAVLCBSubMbTypeEst : public CABACGenericEst {
+  CodingType update(const int symbol, const int context) {
+    return PIP_B_MB_SUB_TYPE;
+  }
+};
+
+class CAVLCPSubMbTypeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    index = param0;
+    est.begin(zz_index, param0, param1);
+  }
+
+  CodingType update(const int symbol, const int context) {
+    est.update(symbol, context);
+    return PIP_P_MB_SUB_TYPE;
+  }
+
+  estimator* get_estimator(const int context) {
+    return est.get_estimator(context);
+  }
+
+ private:
+  int index = 0;
+  GolombEstimator est;
+};
