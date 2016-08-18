@@ -272,6 +272,7 @@ class cavlc_model : public h264_model {
     all_estimators[PIP_CHROMA_PRED_MODE] = &chroma_pred_mode_est;
     all_estimators[PIP_B_MB_SUB_TYPE] = &sub_mb_b_est;
     all_estimators[PIP_P_MB_SUB_TYPE] = &sub_mb_p_est;
+    all_estimators[PIP_QUANT_DELTA] = &quant_delta_est;
   }
 
   void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
@@ -301,4 +302,5 @@ class cavlc_model : public h264_model {
   CAVLCChromaPredModeEst chroma_pred_mode_est;
   CAVLCBSubMbTypeEst sub_mb_b_est;
   CAVLCPSubMbTypeEst sub_mb_p_est;
+  CAVLCQuantDeltaEst quant_delta_est;
 };

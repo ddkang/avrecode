@@ -264,3 +264,22 @@ class CAVLCPSubMbTypeEst : public EstimatorContext {
   int index = 0;
   GolombEstimator est;
 };
+
+class CAVLCQuantDeltaEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    est[mb_type].begin(zz_index, param0, param1);
+  }
+
+  CodingType update(const int symbol, const int context) {
+    est[mb_type].update(symbol, context);
+    return PIP_QUANT_DELTA;
+  }
+
+  estimator* get_estimator(const int context) {
+    return est[mb_type].get_estimator(context);
+  }
+
+ private:
+  GolombEstimator est[MB_NUM_TYPES];
+};
