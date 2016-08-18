@@ -53,6 +53,21 @@ class decompressor {
     in.ParseFromString(in_bytes);
   }
 
+  /*
+   * This is an extremely annoying hack to keep development moving.
+   * The compressor, upon construction, does not know whether it will be
+   * decoding CAVLC or CABAC, so it doesn't know which model to construct.
+   * Construct upon the first time asked, and not any time after.
+   */
+  void make_model(bool cabac) {
+    if (!model) {
+      if (cabac)
+        model = std::make_unique<cabac_model>();
+      else
+        model = std::make_unique<cavlc_model>();
+    }
+  }
+
   void run() {
     blocks.clear();
     blocks.resize(in.block_size());
@@ -183,13 +198,14 @@ class decompressor {
   class cavlc_decoder : public generic_decoder {
    public:
     cavlc_decoder(decompressor *d, GetBitContext *ctx_in, const uint8_t *buf, int size) {
+      d->make_model(false);
       index = d->recognize_coded_block(buf, size);
       block = &d->in.block(index);
       out = &d->blocks[index];
       model = nullptr;
 
       if (block->has_cabac()) {
-        model = &d->model;
+        model = d->get_model();
         model->reset();
         decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
@@ -366,6 +382,7 @@ class decompressor {
    public:
     cabac_decoder(decompressor *d, CABACContext *ctx_in, const uint8_t *buf,
                   uint8_t *state_start, int size) {
+      d->make_model(true);
       index = d->recognize_coded_block(buf, size);
       block = &d->in.block(index);
       out = &d->blocks[index];
@@ -373,7 +390,7 @@ class decompressor {
       this->state_start = state_start;
 
       if (block->has_cabac()) {
-        model = &d->model;
+        model = d->get_model();
         model->reset();
         decoder.reset(new recoded_code::decoder<const char *, uint8_t>(
             block->cabac().data(), block->cabac().data() + block->cabac().size()));
@@ -460,7 +477,7 @@ class decompressor {
   };
 
   h264_model *get_model() {
-    return &model;
+    return model.get();
   }
 
  private:
@@ -529,5 +546,5 @@ class decompressor {
   // read_packet but not yet decoded. Tail of the queue is read_index.
   int next_coded_block = 0;
 
-  h264_model model;
+  std::unique_ptr<h264_model> model;
 };

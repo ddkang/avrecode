@@ -31,69 +31,14 @@ const char * billing_names [] = {EACH_PIP_CODING_TYPE(STRINGIFY_COMMA)};
 #undef STRINGIFY_COMMA
 
 class h264_model {
- private:
-  CABACGenericEst generic_est;
-
-  CABACChromaPreModeEst chroma_pre_mode;
-  CABACCodedBlockEst coded_block;
-  CABACIntraMBTypeEst intra_mb_type;
-  CABACCbpChromaEst cbp_chroma;
-  CABACCbpLumaEst cbp_luma;
-  CABACIntra4x4PredEst intra4x4_pred;
-  CABACMBSkipEst mb_skip;
-
-  CABACMBMvdEst mvd_est;
-  CABACResidualsEst residuals;
-  CABACSignificanceMapEst sig_map_est;
-  CABACSignificanceEOBEst eob_est;
-
-  std::array<EstimatorContext *, PIP_NUM_TYPES> all_estimators;
-
  public:
-  size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
-  size_t cabac_bill[sizeof(billing_names) / sizeof(billing_names[0])];
-
-  // Global context
   CodingType coding_type = PIP_UNKNOWN;
-  bool do_print;
 
- public:
   h264_model() {
     EstimatorContext::reset();
     reset();
-    do_print = false;
     memset(bill, 0, sizeof(bill));
     memset(cabac_bill, 0, sizeof(cabac_bill));
-
-    // Ugh
-    all_estimators[PIP_UNKNOWN] = &generic_est;
-    all_estimators[PIP_SIGNIFICANCE_MAP] = &sig_map_est;
-    all_estimators[PIP_SIGNIFICANCE_EOB] = &eob_est;
-    all_estimators[PIP_RESIDUALS] = &residuals;
-    all_estimators[PIP_INTRA_MB_TYPE] = &intra_mb_type;
-    all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred;
-    all_estimators[PIP_MB_MVD] = &mvd_est;
-    all_estimators[PIP_MB_SKIP_FLAG] = &mb_skip;
-    all_estimators[PIP_MB_CHROMA_PRE_MODE] = &chroma_pre_mode;
-    all_estimators[PIP_MB_CBP_CHROMA] = &cbp_chroma;
-    all_estimators[PIP_CODED_BLOCK] = &coded_block;
-    // Not worth on iphone
-    all_estimators[PIP_P_MB_SUB_TYPE] = &generic_est;
-    all_estimators[PIP_B_MB_SUB_TYPE] = &generic_est;
-    all_estimators[PIP_MB_REF] = &generic_est;
-    // Maybe worth, but I haven't figured out the right priors
-    all_estimators[PIP_MB_CBP_LUMA] = &generic_est;
-    // Should never be used in CABAC
-    all_estimators[PIP_UNREACHABLE] = nullptr;
-    all_estimators[PIP_SIGNIFICANCE_NZ] = nullptr;
-  }
-
-  void enable_debug() {
-    do_print = true;
-  }
-
-  void disable_debug() {
-    do_print = false;
   }
 
   void serialize_est(estimator *begin, estimator *end, std::string fname) {
@@ -113,7 +58,7 @@ class h264_model {
   void deserialize_est(estimator *begin, std::string fname) {
     std::ifstream fin(fname);
     std::string contents( (std::istreambuf_iterator<char>(fin)),
-                           (std::istreambuf_iterator<char>()));
+                          (std::istreambuf_iterator<char>()));
 
     memcpy((void *) begin, contents.c_str(), contents.length());
   }
@@ -165,50 +110,18 @@ class h264_model {
     return probability_for_model_key(range, e);
   }
 
-  template<class Functor>
-  void finished_queueing(CodingType ct, const Functor &put_or_get) {
-    if (ct == PIP_SIGNIFICANCE_MAP) {
-      coding_type = PIP_SIGNIFICANCE_NZ;
-      sig_map_est.finish_queueing(put_or_get);
-      coding_type = PIP_SIGNIFICANCE_MAP;
-    }
-  }
-
-  void end_coding_type(CodingType ct) {
-    switch (ct) {
-      case PIP_SIGNIFICANCE_MAP:
-        sig_map_est.end_coding_type(coding_type);
-        break;
-      default:
-        break;
-    }
-    coding_type = PIP_UNKNOWN;
-  }
-
-  bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) {
-    bool begin_queueing = ct == PIP_SIGNIFICANCE_MAP;
-    coding_type = ct;
-    all_estimators[coding_type]->begin(zz_index, param0, param1);
-    return begin_queueing;
-  }
-
-  void reset_mb_significance_state_tracking() {
-    sig_map_est.reset_mb_significance_state_tracking();
-    coding_type = PIP_SIGNIFICANCE_MAP;
+  void update_state(int symbol, int context) {
+    auto *e = get_estimator(context);
+    update_state_for_model_key(symbol, context, e);
   }
 
   void update_state_tracking(int symbol, int context) {
     if (coding_type == PIP_UNREACHABLE)
       assert(false);
     // Annoyingly, this is a special case
-    if (coding_type == PIP_SIGNIFICANCE_NZ)
+    if (coding_type == PIP_SIGNIFICANCE_NZ && all_estimators[coding_type] == nullptr)
       return;
     coding_type = all_estimators[coding_type]->update(symbol, context);
-  }
-
-  void update_state(int symbol, int context) {
-    auto *e = get_estimator(context);
-    update_state_for_model_key(symbol, context, e);
   }
 
   void update_state_for_model_key(int symbol, int context, estimator* e) {
@@ -243,12 +156,128 @@ class h264_model {
     update_state_tracking(symbol, context);
   }
 
- private:
+  // template<class Functor>
+  virtual void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) = 0;
+  virtual void end_coding_type(CodingType ct) = 0;
+  virtual bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) = 0;
+  virtual void reset_mb_significance_state_tracking() = 0;
+
+
+ protected:
+  std::array<EstimatorContext *, PIP_NUM_TYPES> all_estimators;
+
   estimator* get_estimator(int context) {
     if (coding_type == PIP_UNREACHABLE) {
       assert(false && "Unreachable");
       abort();
     }
     return all_estimators[coding_type]->get_estimator(context);
+  }
+
+
+ private:
+  size_t bill[sizeof(billing_names) / sizeof(billing_names[0])];
+  size_t cabac_bill[sizeof(billing_names) / sizeof(billing_names[0])];
+};
+
+class cabac_model : public h264_model {
+ private:
+  CABACGenericEst generic_est;
+
+  CABACChromaPreModeEst chroma_pre_mode;
+  CABACCodedBlockEst coded_block;
+  CABACIntraMBTypeEst intra_mb_type;
+  CABACCbpChromaEst cbp_chroma;
+  CABACCbpLumaEst cbp_luma;
+  CABACIntra4x4PredEst intra4x4_pred;
+  CABACMBSkipEst mb_skip;
+
+  CABACMBMvdEst mvd_est;
+  CABACResidualsEst residuals;
+  CABACSignificanceMapEst sig_map_est;
+  CABACSignificanceEOBEst eob_est;
+
+
+ public:
+  cabac_model() {
+    // Ugh
+    all_estimators[PIP_UNKNOWN] = &generic_est;
+    all_estimators[PIP_SIGNIFICANCE_MAP] = &sig_map_est;
+    all_estimators[PIP_SIGNIFICANCE_EOB] = &eob_est;
+    all_estimators[PIP_RESIDUALS] = &residuals;
+    all_estimators[PIP_INTRA_MB_TYPE] = &intra_mb_type;
+    all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred;
+    all_estimators[PIP_MB_MVD] = &mvd_est;
+    all_estimators[PIP_MB_SKIP_FLAG] = &mb_skip;
+    all_estimators[PIP_MB_CHROMA_PRE_MODE] = &chroma_pre_mode;
+    all_estimators[PIP_MB_CBP_CHROMA] = &cbp_chroma;
+    all_estimators[PIP_CODED_BLOCK] = &coded_block;
+    // Not worth on iphone
+    all_estimators[PIP_P_MB_SUB_TYPE] = &generic_est;
+    all_estimators[PIP_B_MB_SUB_TYPE] = &generic_est;
+    all_estimators[PIP_MB_REF] = &generic_est;
+    // Maybe worth, but I haven't figured out the right priors
+    all_estimators[PIP_MB_CBP_LUMA] = &generic_est;
+    // Should never be used in CABAC
+    all_estimators[PIP_UNREACHABLE] = nullptr;
+    all_estimators[PIP_SIGNIFICANCE_NZ] = nullptr;
+  }
+
+  void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
+    if (ct == PIP_SIGNIFICANCE_MAP) {
+      coding_type = PIP_SIGNIFICANCE_NZ;
+      sig_map_est.finish_queueing(put_or_get);
+      coding_type = PIP_SIGNIFICANCE_MAP;
+    }
+  }
+
+  void end_coding_type(CodingType ct) {
+    switch (ct) {
+      case PIP_SIGNIFICANCE_MAP:
+        sig_map_est.end_coding_type(coding_type);
+        break;
+      default:
+        break;
+    }
+    coding_type = PIP_UNKNOWN;
+  }
+
+  bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) {
+    bool begin_queueing = ct == PIP_SIGNIFICANCE_MAP;
+    coding_type = ct;
+    all_estimators[coding_type]->begin(zz_index, param0, param1);
+    return begin_queueing;
+  }
+
+  void reset_mb_significance_state_tracking() {
+    sig_map_est.reset_mb_significance_state_tracking();
+    coding_type = PIP_SIGNIFICANCE_MAP;
+  }
+};
+
+class cavlc_model : public h264_model {
+ private:
+  // FIXME
+  CABACGenericEst generic_est;
+
+ public:
+  cavlc_model() {
+    all_estimators[PIP_UNKNOWN] = &generic_est;
+  }
+
+  void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
+
+  }
+
+  void end_coding_type(CodingType ct) {
+
+  }
+
+  bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) {
+
+  }
+
+  void reset_mb_significance_state_tracking() {
+
   }
 };

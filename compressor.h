@@ -40,6 +40,21 @@ class compressor {
     av_file_unmap(original_bytes, original_size);
   }
 
+  /*
+   * This is an extremely annoying hack to keep development moving.
+   * The compressor, upon construction, does not know whether it will be
+   * decoding CAVLC or CABAC, so it doesn't know which model to construct.
+   * Construct upon the first time asked, and not any time after.
+   */
+  void make_model(bool cabac) {
+    if (!model) {
+      if (cabac)
+        model = std::make_unique<cabac_model>();
+      else
+        model = std::make_unique<cavlc_model>();
+    }
+  }
+
   void run() {
     // Run through all the frames in the file, building the output using our hooks.
     av_decoder<compressor> d(this, input_filename);
@@ -166,6 +181,7 @@ class compressor {
   class cavlc_decoder : public generic_decoder {
    public:
     cavlc_decoder(compressor *c, GetBitContext *ctx_in, const uint8_t *buf, int size) {
+      c->make_model(false);
       out = c->find_next_coded_block_and_emit_literal(buf, size);
       model = nullptr;
       if (out == nullptr) {
@@ -182,7 +198,7 @@ class compressor {
       gb_ctx.cavlc_hooks_opaque = nullptr;
 
       this->c = c;
-      model = &c->model;
+      model = c->get_model();
       model->reset();
 
       const std::bitset<32> gb_size_bits(ctx_in->size_in_bits);
@@ -305,6 +321,7 @@ class compressor {
    public:
     cabac_decoder(compressor *c, CABACContext *ctx_in, const uint8_t *buf,
                   uint8_t *state_start, int size) {
+      c->make_model(true);
       out = c->find_next_coded_block_and_emit_literal(buf, size);
       model = nullptr;
       this->state_start = state_start;
@@ -324,7 +341,7 @@ class compressor {
       ::ff_reset_cabac_decoder(&ctx, buf, size);
 
       this->c = c;
-      model = &c->model;
+      model = c->get_model();
       model->reset();
     }
 
@@ -361,7 +378,7 @@ class compressor {
   };
 
   h264_model *get_model() {
-    return &model;
+    return model.get();
   }
 
  private:
@@ -398,6 +415,6 @@ class compressor {
   int read_offset = 0;
   int prev_coded_block_end = 0;
 
-  h264_model model;
+  std::unique_ptr<h264_model> model;
   Recoded out;
 };
