@@ -267,6 +267,7 @@ class cavlc_model : public h264_model {
     all_estimators[PIP_MB_MVD] = &mvd_est;
     all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred_mode_est;
     all_estimators[PIP_MB_CBP_LUMA] = &cbp_est;
+    all_estimators[PIP_MB_SKIP_FLAG] = &skip_est;
   }
 
   void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
@@ -291,4 +292,5 @@ class cavlc_model : public h264_model {
   CAVLCMvdEst mvd_est;
   CAVLCIntra4x4PredModeEst intra4x4_pred_mode_est;
   CAVLCCbpEst cbp_est;
+  CAVLCMbSkipEst skip_est;
 };

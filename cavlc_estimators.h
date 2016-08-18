@@ -173,3 +173,24 @@ class CAVLCCbpEst : public EstimatorContext {
   GolombEstimator est[MB_NUM_TYPES][2];
   estimator blank;
 };
+
+class CAVLCMbSkipEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    slice_type = param0;
+    est[slice_type].begin(zz_index, param0, param1);
+  }
+
+  CodingType update(const int symbol, const int context) {
+    est[slice_type].update(symbol, context);
+    return PIP_MB_SKIP_FLAG;
+  }
+
+  estimator* get_estimator(const int context) {
+    return est[slice_type].get_estimator(context);
+  }
+
+ private:
+  int slice_type = 0;
+  GolombEstimator est[8];
+};
