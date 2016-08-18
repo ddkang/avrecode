@@ -14,6 +14,7 @@ enum MB_TYPE {
   MB_8x8,
   MB_SKIP,
   MB_NONE,
+  MB_NUM_TYPES,
 };
 
 int parse_ff_mb_type(int ff_mb_type) {

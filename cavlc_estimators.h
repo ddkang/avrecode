@@ -114,7 +114,38 @@ class CAVLCMvdEst : public EstimatorContext {
 
  private:
   // FIXME: this should actually be a signed golomb code
-  GolombEstimator est[16][16][2];
+  GolombEstimator est[MB_NUM_TYPES][16][2];
   int index;
   bool is_x;
+};
+
+class CAVLCIntra4x4PredModeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+    running = 0;
+    mode = param0;
+    index = param1;
+  }
+
+  CodingType update(const int symbol, const int context) {
+    if (bit_num) {
+      running <<= 1;
+      running |= symbol;
+    }
+    bit_num++;
+    return PIP_INTRA4X4_PRED_MODE;
+  }
+
+  estimator* get_estimator(const int context) {
+    if (!bit_num)
+      return &skip_est[mode];
+    else
+      return &est[index][mode][running][bit_num - 1];
+  }
+
+ private:
+  int bit_num, mode, index, running;
+  estimator skip_est[9];
+  estimator est[16][9][9][3];
 };
