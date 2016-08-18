@@ -194,3 +194,26 @@ class CAVLCMbSkipEst : public EstimatorContext {
   int slice_type = 0;
   GolombEstimator est[8];
 };
+
+// Only gets ~18% compared to the ~35% losslessh264 gets
+// Keep track of past
+class CAVLCMbTypeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    slice_type = param0;
+    est[slice_type].begin(zz_index, param0, param1);
+  }
+
+  CodingType update(const int symbol, const int context) {
+    est[slice_type].update(symbol, context);
+    return PIP_INTRA_MB_TYPE;
+  }
+
+  estimator* get_estimator(const int context) {
+    return est[slice_type].get_estimator(context);
+  }
+
+ private:
+  int slice_type = 0;
+  GolombEstimator est[8];
+};
