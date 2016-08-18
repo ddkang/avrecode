@@ -394,7 +394,6 @@ class compressor {
       newBlock->set_length_parity(size & 1);
       if (size > 1) {
         newBlock->set_last_byte(&(buf[size - 1]), 1);
-        newBlock->set_first_byte(buf, 1);
       }
       return newBlock;  // Return a block for the recoder to fill.
     } else {

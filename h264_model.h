@@ -22,6 +22,7 @@ extern "C" {
 #include "neighbors.h"
 #include "helpers.h"
 #include "estimators.h"
+#include "cavlc_estimators.h"
 
 #pragma once
 
@@ -263,6 +264,7 @@ class cavlc_model : public h264_model {
  public:
   cavlc_model() {
     all_estimators[PIP_UNKNOWN] = &generic_est;
+    all_estimators[PIP_MB_MVD] = &mvd_est;
   }
 
   void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
@@ -270,14 +272,19 @@ class cavlc_model : public h264_model {
   }
 
   void end_coding_type(CodingType ct) {
-
+    coding_type = PIP_UNKNOWN;
   }
 
   bool begin_coding_type(CodingType ct, int zz_index, int param0, int param1) {
-
+    coding_type = ct;
+    all_estimators[coding_type]->begin(zz_index, param0, param1);
+    return false;
   }
 
   void reset_mb_significance_state_tracking() {
 
   }
+
+ private:
+  CAVLCMvdEst mvd_est;
 };
