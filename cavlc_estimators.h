@@ -149,3 +149,27 @@ class CAVLCIntra4x4PredModeEst : public EstimatorContext {
   estimator skip_est[9];
   estimator est[16][9][9][3];
 };
+
+// This only gets ~10% compared to the claimed 20% of losslessh264
+// losslessh264 uses the past cbp_luma which we do not track.
+class CAVLCCbpEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    decode_chroma = param0;
+    est[mb_type][decode_chroma].begin(zz_index, param0, param1);
+  }
+
+  CodingType update(const int symbol, const int context) {
+    est[mb_type][decode_chroma].update(symbol, context);
+    return PIP_MB_CBP_LUMA;
+  }
+
+  estimator* get_estimator(const int context) {
+    return est[mb_type][decode_chroma].get_estimator(context);
+  }
+
+ private:
+  bool decode_chroma;
+  GolombEstimator est[MB_NUM_TYPES][2];
+  estimator blank;
+};
