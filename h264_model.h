@@ -183,7 +183,7 @@ class h264_model {
 
 class cabac_model : public h264_model {
  private:
-  CABACGenericEst generic_est;
+  GenericEst generic_est;
   Intra4x4PredModeEst intra4x4_pred;
 
   CABACChromaPreModeEst chroma_pre_mode;
@@ -259,7 +259,7 @@ class cabac_model : public h264_model {
 class cavlc_model : public h264_model {
  private:
   // FIXME
-  CABACGenericEst generic_est;
+  GenericEst generic_est;
 
  public:
   cavlc_model() {

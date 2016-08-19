@@ -207,7 +207,7 @@ class CAVLCChromaPredModeEst : public EstimatorContext {
 };
 
 // Not used in walk, but I'll keep it here for bookkeeping purposes.
-class CAVLCBSubMbTypeEst : public CABACGenericEst {
+class CAVLCBSubMbTypeEst : public GenericEst {
   CodingType update(const int symbol, const int context) {
     return PIP_B_MB_SUB_TYPE;
   }
@@ -254,7 +254,7 @@ class CAVLCQuantDeltaEst : public EstimatorContext {
 };
 
 // Just for bookkeeping for now
-class CAVLCResidualsEst : public CABACGenericEst {
+class CAVLCResidualsEst : public GenericEst {
   CodingType update(const int symbol, const int context) {
     return PIP_RESIDUALS;
   }
@@ -342,12 +342,12 @@ class CAVLCRemainingLevelCodeEst : public EstimatorContext {
   estimator blank;
 };
 
-class CAVLCRemainingLevelEst : public CABACGenericEst {
+class CAVLCRemainingLevelEst : public GenericEst {
   CodingType update(const int symbol, const int context) {
     return PIP_REMAINING_LEVEL;
   }
 };
-class CAVLCFirstLevelEst : public CABACGenericEst {
+class CAVLCFirstLevelEst : public GenericEst {
   CodingType update(const int symbol, const int context) {
     return PIP_FIRST_LEVEL;
   }

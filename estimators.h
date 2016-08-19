@@ -158,7 +158,7 @@ class EstimatorContext {
   static int nonzeros_observed;
 };
 
-class CABACGenericEst : public EstimatorContext {
+class GenericEst : public EstimatorContext {
  public:
   void begin(const int zz_index, const int param0, const int param1) {}
   CodingType update(const int symbol, const int context) {
