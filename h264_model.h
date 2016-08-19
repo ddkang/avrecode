@@ -264,15 +264,26 @@ class cavlc_model : public h264_model {
  public:
   cavlc_model() {
     all_estimators[PIP_UNKNOWN] = &generic_est;
-    all_estimators[PIP_MB_MVD] = &mvd_est;
+    all_estimators[PIP_RESIDUALS] = &residuals_est;
+    all_estimators[PIP_INTRA_MB_TYPE] = &mb_type_est;
     all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred_mode_est;
     all_estimators[PIP_MB_CBP_LUMA] = &cbp_est;
+    all_estimators[PIP_MB_MVD] = &mvd_est;
     all_estimators[PIP_MB_SKIP_FLAG] = &skip_est;
-    all_estimators[PIP_INTRA_MB_TYPE] = &mb_type_est;
-    all_estimators[PIP_CHROMA_PRED_MODE] = &chroma_pred_mode_est;
     all_estimators[PIP_B_MB_SUB_TYPE] = &sub_mb_b_est;
     all_estimators[PIP_P_MB_SUB_TYPE] = &sub_mb_p_est;
+    all_estimators[PIP_CHROMA_PRED_MODE] = &chroma_pred_mode_est;
     all_estimators[PIP_QUANT_DELTA] = &quant_delta_est;
+
+    all_estimators[PIP_RUN_BEFORE] = &run_before_est;
+    all_estimators[PIP_ZEROS_LEFT] = &zeros_left_est;
+    all_estimators[PIP_REMAINING_LEVEL_CODE] = &remaining_level_code_est;
+    all_estimators[PIP_REMAINING_LEVEL] = &remaining_level_est;
+    all_estimators[PIP_FIRST_LEVEL_CODE] = &first_level_code_est;
+    all_estimators[PIP_FIRST_LEVEL] = &first_level_est;
+    all_estimators[PIP_LEVEL_SETUP] = &level_setup_est;
+    all_estimators[PIP_COEFF_TOKEN_CHROMA] = &coef_token_chroma_est;
+    all_estimators[PIP_COEFF_TOKEN] = &coeff_token_est;
   }
 
   void finished_queueing(CodingType ct, const std::function<void(estimator *, int *, int)> &put_or_get) {
@@ -303,4 +314,15 @@ class cavlc_model : public h264_model {
   CAVLCBSubMbTypeEst sub_mb_b_est;
   CAVLCPSubMbTypeEst sub_mb_p_est;
   CAVLCQuantDeltaEst quant_delta_est;
+
+  CAVLCResidualsEst residuals_est;
+  CAVLCRunBeforeEst run_before_est;
+  CAVLCZerosLeftEst zeros_left_est;
+  CAVLCRemainingLevelCodeEst remaining_level_code_est;
+  CAVLCRemainingLevelEst remaining_level_est;
+  CAVLCFirstLevelCodeEst first_level_code_est;
+  CAVLCFirstLevelEst first_level_est;
+  CAVLCLevelSetupEst level_setup_est;
+  CAVLCCoeffTokenChromaEst coef_token_chroma_est;
+  CAVLCCoeffTokenEst coeff_token_est;
 };

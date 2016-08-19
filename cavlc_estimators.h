@@ -283,3 +283,159 @@ class CAVLCQuantDeltaEst : public EstimatorContext {
  private:
   GolombEstimator est[MB_NUM_TYPES];
 };
+
+// Just for bookkeeping for now
+class CAVLCResidualsEst : public CABACGenericEst {
+  CodingType update(const int symbol, const int context) {
+    return PIP_RESIDUALS;
+  }
+};
+class CAVLCRunBeforeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    zeros_left = param0;
+    index = param1;
+    bit_num = 0;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_RUN_BEFORE;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[zeros_left][index][bit_num][sub_mb_cat];
+  }
+
+ private:
+  int zeros_left, index, bit_num;
+  estimator est[16][16][12][6];
+};
+
+class CAVLCZerosLeftEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    total_coeff = param0;
+    bit_num = 0;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_ZEROS_LEFT;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[sub_mb_cat][total_coeff][bit_num];
+  }
+
+ private:
+  int total_coeff, bit_num;
+  estimator est[6][16][9];
+};
+
+class CAVLCFirstLevelCodeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+    suffix_length = zz_index;
+    total_coeff = param0;
+    trailing_ones = param1;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_FIRST_LEVEL_CODE;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[total_coeff][trailing_ones][bit_num][sub_mb_cat];
+  }
+
+
+ private:
+  int suffix_length, total_coeff, trailing_ones;
+  int bit_num;
+  estimator est[64][64][8][6];
+};
+
+class CAVLCRemainingLevelCodeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+    index = param0;
+    suffix_length = param1;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_REMAINING_LEVEL_CODE;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[suffix_length][bit_num];
+  }
+
+ private:
+  int index, suffix_length, bit_num;
+  estimator est[8][8];
+  estimator blank;
+};
+
+class CAVLCRemainingLevelEst : public CABACGenericEst {
+  CodingType update(const int symbol, const int context) {
+    return PIP_REMAINING_LEVEL;
+  }
+};
+class CAVLCFirstLevelEst : public CABACGenericEst {
+  CodingType update(const int symbol, const int context) {
+    return PIP_FIRST_LEVEL;
+  }
+};
+
+class CAVLCLevelSetupEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+    trailing_ones = param0;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_LEVEL_SETUP;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[trailing_ones][bit_num];
+  }
+
+ private:
+  int trailing_ones, bit_num;
+  estimator est[8][3];
+};
+
+class CAVLCCoeffTokenChromaEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_COEFF_TOKEN_CHROMA;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[mb_coord.scan8_index][bit_num];
+  }
+
+ private:
+  int bit_num;
+  estimator est[64][8];
+};
+
+class CAVLCCoeffTokenEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    total_coeff = param0;
+    bit_num = 0;
+  }
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_COEFF_TOKEN;
+  }
+  estimator* get_estimator(const int context) {
+    return &est[mb_coord.scan8_index][total_coeff][sub_mb_cat][bit_num];
+  }
+
+ private:
+  int total_coeff, bit_num = 0;
+  estimator est[64][17][5][12];
+};
