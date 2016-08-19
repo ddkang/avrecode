@@ -192,6 +192,77 @@ class GenericEst : public EstimatorContext {
   estimator cabac_estimator[1024]; // FIXME?
 };
 
+class UnaryEstimator : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+  }
+
+  // This class should never really be used on its face, so w/e
+  CodingType update(const int symbol, const int context) {
+    bit_num++;
+    return PIP_UNKNOWN;
+  }
+
+  estimator* get_estimator(const int context) {
+    return &est[std::min(bit_num, MAX_NUM - 1)];
+  }
+
+  int bit_num = 0;
+ protected:
+  static constexpr int MAX_NUM = 10;
+  estimator est[MAX_NUM];
+};
+
+class GolombEstimator : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    state = UNARY;
+    unary_est.begin(zz_index, param0, param1);
+    mantissa_est.begin(zz_index, param0, param1);
+  }
+
+  // This class should never really be used on its face, so w/e
+  CodingType update(const int symbol, const int context) {
+    switch (state) {
+      case UNARY:
+        if (symbol) state = MANTISSA;
+        return unary_est.update(symbol, context);
+      case MANTISSA:
+        if (unary_est.bit_num == mantissa_est.bit_num) {
+          auto e = mantissa_est.update(symbol, context);
+          begin(0, 0, 0);
+          return e;
+        } else
+          return mantissa_est.update(symbol, context);
+      case DONE:
+        begin(0, 0, 0);
+        return PIP_UNKNOWN;
+    }
+  }
+
+  estimator* get_estimator(const int context) {
+    switch (state) {
+      case UNARY:
+        return unary_est.get_estimator(context);
+      case MANTISSA:
+        return mantissa_est.get_estimator(context);
+      case DONE:
+        assert(false);
+    }
+  }
+
+ private:
+  enum STATE {
+    UNARY,
+    MANTISSA,
+    DONE
+  };
+  STATE state;
+  UnaryEstimator unary_est, mantissa_est;
+};
+
+
 
 // Both code paths go through this prior
 // However, index hurts for CABAC, so it's set to 0 on the ffmpeg side.
@@ -226,25 +297,27 @@ class Intra4x4PredModeEst : public EstimatorContext {
   estimator est[16][9][9][3];
 };
 
-
-
-class CABACChromaPreModeEst : public EstimatorContext {
+// CAVLC is recoded as a truncated unary number
+class ChromaPredModeEst : public EstimatorContext {
  public:
   void begin(const int zz_index, const int param0, const int param1) {
-    bit_num = 0;
+    est[mb_type].begin(zz_index, param0, param1);
   }
+
   CodingType update(const int symbol, const int context) {
-    bit_num++;
+    est[mb_type].update(symbol, context);
     return PIP_MB_CHROMA_PRED_MODE;
   }
+
   estimator* get_estimator(const int context) {
-    return &est[bit_num];
+    return est[mb_type].get_estimator(context);
   }
 
  private:
-  estimator est[3];
-  int bit_num = -1;
+  UnaryEstimator est[MB_NUM_TYPES];
 };
+
+
 
 class CABACCodedBlockEst : public EstimatorContext {
  public:

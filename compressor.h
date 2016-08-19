@@ -225,9 +225,14 @@ class compressor {
       return symbol;
     }
 
+    // This is never > 3, so writing truncated unary is actually strictly optimal
+    // If not, chroma pred mode is ~11x the rest so it's fine
     int get_ue_golomb_31() {
-      int symbol = ::get_ue_golomb_31(&gb_ctx);
-      execute_golomb(symbol);
+      const int symbol = ::get_ue_golomb_31(&gb_ctx);
+      assert(symbol >= 0 && symbol <= 3);
+      for (int i = 0; i < symbol; i++)
+        execute_symbol(0, 0);
+      if (symbol != 3) execute_symbol(1, 0);
       return symbol;
     }
 

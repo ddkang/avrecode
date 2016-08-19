@@ -185,8 +185,8 @@ class cabac_model : public h264_model {
  private:
   GenericEst generic_est;
   Intra4x4PredModeEst intra4x4_pred;
+  ChromaPredModeEst chroma_pred_mode;
 
-  CABACChromaPreModeEst chroma_pre_mode;
   CABACCodedBlockEst coded_block;
   CABACIntraMBTypeEst intra_mb_type;
   CABACCbpChromaEst cbp_chroma;
@@ -210,7 +210,7 @@ class cabac_model : public h264_model {
     all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred;
     all_estimators[PIP_MB_MVD] = &mvd_est;
     all_estimators[PIP_MB_SKIP_FLAG] = &mb_skip;
-    all_estimators[PIP_MB_CHROMA_PRED_MODE] = &chroma_pre_mode;
+    all_estimators[PIP_MB_CHROMA_PRED_MODE] = &chroma_pred_mode;
     all_estimators[PIP_MB_CBP_CHROMA] = &cbp_chroma;
     all_estimators[PIP_CODED_BLOCK] = &coded_block;
     // Not worth on iphone
@@ -306,12 +306,12 @@ class cavlc_model : public h264_model {
 
  private:
   Intra4x4PredModeEst intra4x4_pred_mode_est;
+  ChromaPredModeEst chroma_pred_mode_est;
 
   CAVLCMvdEst mvd_est;
   CAVLCCbpEst cbp_est;
   CAVLCMbSkipEst skip_est;
   CAVLCMbTypeEst mb_type_est;
-  CAVLCChromaPredModeEst chroma_pred_mode_est;
   CAVLCBSubMbTypeEst sub_mb_b_est;
   CAVLCPSubMbTypeEst sub_mb_p_est;
   CAVLCQuantDeltaEst quant_delta_est;

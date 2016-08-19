@@ -294,7 +294,21 @@ class decompressor {
       return decode_golomb();
     }
     int get_ue_golomb_31() {
-      return decode_golomb();
+      // Truncated unary
+      int symbol = 0;
+      if (read1_no_put()) symbol = 0;
+      else if (read1_no_put()) symbol = 1;
+      else if (read1_no_put()) symbol = 2;
+      else symbol = 3;
+
+      const int len = av_log2(symbol + 1) * 2 + 1;
+      const std::bitset<32> bits(symbol + 1); // The last len bits
+      for (int i = len - 1; i >= 0; i--)
+        put_single(bits[i]);
+      ff_ctx->index += len;
+
+      return symbol;
+      // return decode_golomb();
     }
     unsigned get_ue_golomb_long() {
       return decode_golomb();
