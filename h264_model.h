@@ -184,13 +184,13 @@ class h264_model {
 class cabac_model : public h264_model {
  private:
   CABACGenericEst generic_est;
+  Intra4x4PredModeEst intra4x4_pred;
 
   CABACChromaPreModeEst chroma_pre_mode;
   CABACCodedBlockEst coded_block;
   CABACIntraMBTypeEst intra_mb_type;
   CABACCbpChromaEst cbp_chroma;
   CABACCbpLumaEst cbp_luma;
-  CABACIntra4x4PredEst intra4x4_pred;
   CABACMBSkipEst mb_skip;
 
   CABACMBMvdEst mvd_est;
@@ -305,8 +305,9 @@ class cavlc_model : public h264_model {
   }
 
  private:
+  Intra4x4PredModeEst intra4x4_pred_mode_est;
+
   CAVLCMvdEst mvd_est;
-  CAVLCIntra4x4PredModeEst intra4x4_pred_mode_est;
   CAVLCCbpEst cbp_est;
   CAVLCMbSkipEst skip_est;
   CAVLCMbTypeEst mb_type_est;

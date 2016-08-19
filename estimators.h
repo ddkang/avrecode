@@ -192,6 +192,42 @@ class CABACGenericEst : public EstimatorContext {
   estimator cabac_estimator[1024]; // FIXME?
 };
 
+
+// Both code paths go through this prior
+// However, index hurts for CABAC, so it's set to 0 on the ffmpeg side.
+class Intra4x4PredModeEst : public EstimatorContext {
+ public:
+  void begin(const int zz_index, const int param0, const int param1) {
+    bit_num = 0;
+    running = 0;
+    mode = param0;
+    index = param1;
+  }
+
+  CodingType update(const int symbol, const int context) {
+    if (bit_num) {
+      running <<= 1;
+      running |= symbol;
+    }
+    bit_num++;
+    return PIP_INTRA4X4_PRED_MODE;
+  }
+
+  estimator* get_estimator(const int context) {
+    if (!bit_num)
+      return &skip_est[mode];
+    else
+      return &est[index][mode][running][bit_num - 1];
+  }
+
+ private:
+  int bit_num, running, mode, index;
+  estimator skip_est[9];
+  estimator est[16][9][9][3];
+};
+
+
+
 class CABACChromaPreModeEst : public EstimatorContext {
  public:
   void begin(const int zz_index, const int param0, const int param1) {
@@ -276,35 +312,6 @@ class CABACCbpChromaEst : public EstimatorContext {
  private:
   int bit_num, left, top;
   estimator est[2][4][4];
-};
-
-class CABACIntra4x4PredEst : public EstimatorContext {
- public:
-  void begin(const int zz_index, const int param0, const int param1) {
-    bit_num = 0;
-    last = 0;
-    running = 0;
-    last_pred = param0;
-  }
-  CodingType update(const int symbol, const int context) {
-    if (bit_num) {
-      running <<= 1;
-      running |= symbol;
-    }
-    bit_num++;
-    last = symbol;
-    return PIP_INTRA4X4_PRED_MODE;
-  }
-  estimator* get_estimator(const int context) {
-    if (!bit_num)
-      return &skip_est[last_pred];
-    else
-      return &est[bit_num - 1][running][last_pred];
-  }
- private:
-  int bit_num, last, running, last_pred;
-  estimator skip_est[16];
-  estimator est[3][16][16];
 };
 
 class CABACMBSkipEst : public EstimatorContext {

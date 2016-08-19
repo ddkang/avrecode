@@ -119,37 +119,6 @@ class CAVLCMvdEst : public EstimatorContext {
   bool is_x;
 };
 
-class CAVLCIntra4x4PredModeEst : public EstimatorContext {
- public:
-  void begin(const int zz_index, const int param0, const int param1) {
-    bit_num = 0;
-    running = 0;
-    mode = param0;
-    index = param1;
-  }
-
-  CodingType update(const int symbol, const int context) {
-    if (bit_num) {
-      running <<= 1;
-      running |= symbol;
-    }
-    bit_num++;
-    return PIP_INTRA4X4_PRED_MODE;
-  }
-
-  estimator* get_estimator(const int context) {
-    if (!bit_num)
-      return &skip_est[mode];
-    else
-      return &est[index][mode][running][bit_num - 1];
-  }
-
- private:
-  int bit_num, mode, index, running;
-  estimator skip_est[9];
-  estimator est[16][9][9][3];
-};
-
 // This only gets ~10% compared to the claimed 20% of losslessh264
 // losslessh264 uses the past cbp_luma which we do not track.
 class CAVLCCbpEst : public EstimatorContext {
