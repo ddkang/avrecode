@@ -210,7 +210,7 @@ class cabac_model : public h264_model {
     all_estimators[PIP_INTRA4X4_PRED_MODE] = &intra4x4_pred;
     all_estimators[PIP_MB_MVD] = &mvd_est;
     all_estimators[PIP_MB_SKIP_FLAG] = &mb_skip;
-    all_estimators[PIP_MB_CHROMA_PRE_MODE] = &chroma_pre_mode;
+    all_estimators[PIP_MB_CHROMA_PRED_MODE] = &chroma_pre_mode;
     all_estimators[PIP_MB_CBP_CHROMA] = &cbp_chroma;
     all_estimators[PIP_CODED_BLOCK] = &coded_block;
     // Not worth on iphone
@@ -272,7 +272,7 @@ class cavlc_model : public h264_model {
     all_estimators[PIP_MB_SKIP_FLAG] = &skip_est;
     all_estimators[PIP_B_MB_SUB_TYPE] = &sub_mb_b_est;
     all_estimators[PIP_P_MB_SUB_TYPE] = &sub_mb_p_est;
-    all_estimators[PIP_CHROMA_PRED_MODE] = &chroma_pred_mode_est;
+    all_estimators[PIP_MB_CHROMA_PRED_MODE] = &chroma_pred_mode_est;
     all_estimators[PIP_QUANT_DELTA] = &quant_delta_est;
 
     all_estimators[PIP_RUN_BEFORE] = &run_before_est;

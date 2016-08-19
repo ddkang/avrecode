@@ -235,7 +235,7 @@ class CABACChromaPreModeEst : public EstimatorContext {
   }
   CodingType update(const int symbol, const int context) {
     bit_num++;
-    return PIP_MB_CHROMA_PRE_MODE;
+    return PIP_MB_CHROMA_PRED_MODE;
   }
   estimator* get_estimator(const int context) {
     return &est[bit_num];

@@ -195,7 +195,7 @@ class CAVLCChromaPredModeEst : public EstimatorContext {
 
   CodingType update(const int symbol, const int context) {
     est[mb_type].update(symbol, context);
-    return PIP_CHROMA_PRED_MODE;
+    return PIP_MB_CHROMA_PRED_MODE;
   }
 
   estimator* get_estimator(const int context) {
